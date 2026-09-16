@@ -14,13 +14,9 @@ Work through one box at a time: data → prediction → portfolio → scoring �
 
 The competition PDF remains in the project root. The detailed dataset guide is [here](01_data/raw/readme.md).
 
-## Download the datasets
+## Local datasets
 
-The large datasets are distributed separately and are not included in this Git repository.
-
-**Download link:** Pending — use the organizer's original shared folder for now.
-
-Download these two files and place them in `01_data/raw/`:
+Teammates should use their existing copies of the datasets. They are not included in this Git repository. Place these two files in `01_data/raw/`:
 
 - `chars_final_with_names.parquet`
 - `8k_20150101_20260831_identified.parquet`
