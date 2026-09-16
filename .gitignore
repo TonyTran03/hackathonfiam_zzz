@@ -1,0 +1,7 @@
+# Download datasets separately; keep local copies out of Git.
+*.parquet
+
+# Python-generated files
+__pycache__/
+*.pyc
+.venv/
