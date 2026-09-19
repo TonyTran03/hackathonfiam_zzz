@@ -53,7 +53,7 @@ MODEL = "avg"
 N_PER_LEG = 100
 GROSS_TARGET = 2.00       # 200% of capital, the limit
 MAX_WEIGHT = 0.02         # 2% of capital in any one name
-NET_CAP = 0.20            # keep well inside the -50%..+50% band
+NET_CAP = 0.30            # room to reach beta neutrality; rules allow +/-50%
 
 # Turnover controls. The unsmoothed book traded 221% of capital a month and
 # broke even at 34 bps -- too thin a margin for a long leg that is two thirds
@@ -64,7 +64,25 @@ NET_CAP = 0.20            # keep well inside the -50%..+50% band
 #   BUFFER_MULT    a held name survives while inside the top N*BUFFER_MULT.
 SMOOTH_MONTHS = 3
 BUFFER_MULT = 2.5
-ASSUMED_COST_BPS = 20     # what the tuning optimises against
+ASSUMED_COST_BPS = 20     # what the tuning would optimise against
+
+# Tuning these on validation is OFF, and that is a finding rather than a
+# shortcut. The only clean validation window is 24 months (2019-2020), every
+# configuration in it loses money, and the "best" choice flipped from
+# (2 months, 3.0x) to (1 month, 2.0x) purely because the beta feedback below
+# was added. A selection that unstable is reading noise. Turnover control is
+# a cost decision, not a return forecast, so the values above stand as
+# specified before any tuning was run: 3 months is the standard smoothing for
+# a noisy monthly forecast, and 2.5x is a moderate buffer.
+TUNE_ON_VALIDATION = False
+
+# Closed-loop beta control. Matching the legs on per-stock beta estimates left
+# the book at -0.24: the long leg's realised beta came in 0.30 below its
+# estimate while the short leg's nearly matched. So blend the estimate with
+# each leg's own measured sensitivity over completed months.
+BETA_FEEDBACK_WINDOW = 24     # months of history used to measure
+BETA_FEEDBACK_MIN = 12        # months required before the measurement is used
+BETA_FEEDBACK_WEIGHT = 0.6    # how far to move from estimate toward measurement
 
 # Only the FIRST fold's validation block sits entirely before the evaluation
 # window; later folds validate on months inside 2021-2026 and so cannot be
@@ -191,7 +209,33 @@ def size_legs(beta_long, beta_short):
     return long_notional, short_notional
 
 
-def make_book(pred, smooth_months, buffer_mult):
+def realised_leg_betas(history, market):
+    """Each leg's own market sensitivity, measured from how it has behaved.
+
+    Matching the legs on per-stock beta ESTIMATES leaves a gap. Over the test
+    period the long leg's estimated beta was +1.23 but its realised beta only
+    +0.92, while the short leg's +1.22 came in at +1.15. The legs were matched
+    exactly as designed and the book still carried -0.24, because the forecast
+    picks longs that behave more defensively than their own history says and a
+    per-stock estimate cannot see that.
+
+    So measure the legs instead of only trusting the estimates. Only COMPLETED
+    months enter -- month t uses t-1 and earlier, nothing else. Returns None
+    until there is enough history.
+    """
+    if len(history) < BETA_FEEDBACK_MIN:
+        return None
+    h = pd.DataFrame(history[-BETA_FEEDBACK_WINDOW:])
+    mk = market.reindex(h["target_month"]).values.astype(float)
+    ok = ~np.isnan(mk)
+    if ok.sum() < BETA_FEEDBACK_MIN or np.std(mk[ok]) == 0:
+        return None
+    bl = np.polyfit(mk[ok], h["long_ret"].values[ok] / h["long_notional"].values[ok], 1)[0]
+    bs = np.polyfit(mk[ok], -h["short_ret"].values[ok] / h["short_notional"].values[ok], 1)[0]
+    return bl, bs
+
+
+def make_book(pred, smooth_months, buffer_mult, market=None):
     """Build monthly weights from a screened prediction frame."""
     pred = pred.copy()
     pred["score"] = pred.groupby("target_month", group_keys=False).apply(
@@ -199,7 +243,7 @@ def make_book(pred, smooth_months, buffer_mult):
     pred["score"] = smooth_scores(pred, smooth_months)
 
     held_long, held_short = set(), set()
-    rows = []
+    rows, history = [], []
     for month, g in pred.groupby("target_month", sort=True):
         held_l = set(g.index[g["permno"].isin(held_long)])
         held_s = set(g.index[g["permno"].isin(held_short)])
@@ -209,12 +253,29 @@ def make_book(pred, smooth_months, buffer_mult):
         wl, ws = leg_weights(L[VOL_COL]), leg_weights(S[VOL_COL])
         bl = float((wl * L[BETA_COL]).sum())
         bs = float((ws * S[BETA_COL]).sum())
-        long_notional, short_notional = size_legs(bl, bs)
 
+        # shrink the per-stock estimate toward what the legs have actually done
+        if market is not None:
+            measured = realised_leg_betas(history, market)
+            if measured is not None:
+                w = BETA_FEEDBACK_WEIGHT
+                bl = (1 - w) * bl + w * measured[0]
+                bs = (1 - w) * bs + w * measured[1]
+
+        long_notional, short_notional = size_legs(bl, bs)
         L["weight"] = wl * long_notional
         S["weight"] = -ws * short_notional
         rows.append(pd.concat([L, S]))
         held_long, held_short = set(L["permno"]), set(S["permno"])
+
+        if market is not None:
+            history.append({
+                "target_month": month,
+                "long_ret": float((L["weight"] * L[C.TARGET].fillna(0.0)).sum()),
+                "short_ret": float((S["weight"] * S[C.TARGET].fillna(0.0)).sum()),
+                "long_notional": long_notional,
+                "short_notional": short_notional,
+            })
 
     return pd.concat(rows, ignore_index=True)
 
@@ -232,7 +293,7 @@ def net_ir(book, cost_bps):
     return np.sqrt(12) * active.mean() / active.std(ddof=1), traded.mean()
 
 
-def tune_turnover(screened_val):
+def tune_turnover(screened_val, market=None):
     """Pick the smoothing window and buffer on months before the test period."""
     print("\nturnover tuning on %d clean validation months (%s and earlier), "
           "scored at %d bps" % (screened_val["target_month"].nunique(),
@@ -241,7 +302,7 @@ def tune_turnover(screened_val):
     for sm in SMOOTH_GRID:
         line = []
         for bf in BUFFER_GRID:
-            book = make_book(screened_val, sm, bf)
+            book = make_book(screened_val, sm, bf, market=market)
             v, traded = net_ir(book, ASSUMED_COST_BPS)
             line.append("%+.2f" % v)
             if v > best_ir:
@@ -253,13 +314,21 @@ def tune_turnover(screened_val):
     return best
 
 
+def load_market():
+    """Monthly market return in excess of cash, indexed by target month."""
+    bm = pd.read_csv(C.BENCHMARK_CSV)
+    return (bm["sp500_ret"] - bm["cash_monthly"]).set_axis(bm["target_month"])
+
+
 def build(tune=True):
     if not PRED_FILE.exists():
         raise SystemExit("missing %s -- run stage 3 first" % PRED_FILE)
 
+    market = load_market()
+
     smooth, buffer_mult = SMOOTH_MONTHS, BUFFER_MULT
     val_file = C.PROCESSED_DIR / "validation_predictions.parquet"
-    if tune and val_file.exists():
+    if tune and TUNE_ON_VALIDATION and val_file.exists():
         val = pd.read_parquet(val_file)
         val = val[val["target_month"] <= TUNE_END].drop_duplicates(
             ["permno", "target_month"], keep="first")
@@ -273,13 +342,13 @@ def build(tune=True):
             lambda s: (s - s.mean()) / (s.std(ddof=0) if s.std(ddof=0) else 1.0))
         val[MODEL] = z.mean(axis=1)
         if val["target_month"].nunique() >= 12:
-            smooth, buffer_mult = tune_turnover(screen(val, quiet=True))
+            smooth, buffer_mult = tune_turnover(screen(val, quiet=True), market)
 
     pred = pd.read_parquet(PRED_FILE)
     lo, hi = C.COMPETITION["oos_start"], C.COMPETITION["oos_end"]
     pred = screen(pred[(pred["target_month"] >= lo) & (pred["target_month"] <= hi)].copy())
 
-    h = make_book(pred, smooth, buffer_mult)
+    h = make_book(pred, smooth, buffer_mult, market=market)
     h["date"] = pd.PeriodIndex(h["target_month"], freq="M").to_timestamp()
     print("\nsmoothing %d months, buffer %.1fx" % (smooth, buffer_mult))
 
