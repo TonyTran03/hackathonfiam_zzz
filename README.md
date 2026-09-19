@@ -11,8 +11,21 @@ Work through one box at a time: data → prediction → portfolio → scoring �
 | `03_portfolio_construction/` | Convert rankings into monthly signed portfolio weights. Save working holdings here. |
 | `04_backtest_scoring/` | Evaluate monthly returns, constraints, and risk. Contains the supplied portfolio-analysis starter script. |
 | `05_submission/` | Keep final deliverables here: 8-page deck plus appendix, holdings CSV, portfolio-return CSV, `MAIN.py`, and team CVs. |
+| `common/` | Shared across every box: `config.py` (paths, the trading limits, the train/validation/test schedule) and `checks.py` (rule-compliance checks). Folder names starting with a digit cannot be imported in Python, so anything used by more than one stage lives here. |
+| `tests/` | `test_checks.py` feeds the checker 21 deliberately broken inputs and asserts each one is caught. |
 
 The competition PDF remains in the project root. The detailed dataset guide is [here](01_data/raw/readme.md).
+
+## Setup
+
+```powershell
+python -m pip install -r requirements.txt
+python 01_data/01_load_data.py
+```
+
+Versions are pinned so that every teammate regenerates byte-identical files.
+Generated output lands in `01_data/processed/`, which is gitignored — the work
+table is ~440 MB and must never be committed. Rebuilding takes about a minute.
 
 ## Local datasets
 
@@ -22,6 +35,14 @@ Teammates should use their existing copies of the datasets. They are not include
 - `8k_20150101_20260831_identified.parquet`
 
 Keep the filenames unchanged. The feature-list CSV and dataset guide are already included in Git. Local Parquet files are ignored by Git, so they will not be uploaded when you commit or push.
+
+If you keep the datasets somewhere else, point `FIAM_DATA_DIR` at that folder
+instead of moving them. The repo root is also searched.
+
+The benchmark inputs in `01_data/raw/external/` (cash rate and two market
+series, 80 KB total) **are** committed on purpose. Both sources revise their
+history, so pinning the downloaded snapshot is what keeps everyone's scores
+comparable.
 
 ## Constraints to build around
 
@@ -59,7 +80,46 @@ The root `MAIN.py` runs these five stages in order with the same Python interpre
 python MAIN.py
 ```
 
-The five stage scripts still need implementing. Until they exist, `MAIN.py` lists the missing files and exits without running anything. The existing starter scripts are references, not connected pipeline stages. Package the final submission version with its required dependencies as allowed by the rules; moving `MAIN.py` alone would break its relative stage paths.
+Stage 1 is implemented; the other four still need writing. Until they exist, `MAIN.py` lists the missing files and exits without running anything. The existing starter scripts are references, not connected pipeline stages. Package the final submission version with its required dependencies as allowed by the rules; moving `MAIN.py` alone would break its relative stage paths.
+
+After all five stages succeed, `MAIN.py` runs the compliance checks as a final
+gate and fails the chain if any rule is broken. Use `--no-check` to skip it.
+
+### Stage 1 — `01_data/01_load_data.py`
+
+Writes `model_table.parquet` (147 predictors + identifiers + the answer) and
+`benchmark_monthly.csv` (the cash-plus-4% hurdle, plus two market series) into
+`01_data/processed/`.
+
+It attaches a `target_month` column: a row labelled `eom` = month *t* carries
+predictors for month *t*, and `ret_exc_lead1m` is **already** the month *t+1*
+answer. **Assign train/validation/test by `target_month`, never by `eom`.**
+Splitting on `eom` leaks one month of answers into training every year — the
+bug is invisible and flatters the score, so the checker tests for it.
+
+Known gap: the dividend-inclusive market series stops at 2026-07. The index
+level series covers all 68 evaluation months; use it for the beta regression
+and the other as a cross-check.
+
+## Compliance checks
+
+`common/checks.py` covers two things the rules are explicit about:
+
+- **Look-ahead.** Predictors must come from `factor_char_list.csv`; the answer
+  column must never be an input; splits must be keyed on the target month; and
+  scalers, medians and imputers must be fitted on training months only.
+- **Trading criteria.** Per month: 100–500 names, gross ≤ 2.00, net within
+  ±0.50, both legs present, no duplicates, no untradable stocks, every
+  evaluation month covered.
+
+```powershell
+python tests/test_checks.py          # prove the checker actually fires
+python run_checks.py                 # look-ahead checks on the work table
+python run_checks.py holdings.csv    # also check a book
+```
+
+`run_checks.py` exits non-zero on any failure. Run it before every submission —
+the rules say the organizers will audit for look-ahead, so check first.
 
 The final holdings CSV must cover every test month and include **date, PERMNO, ticker, company name, and signed weight** (positive long, negative short). Submit portfolio returns in a separate CSV.
 

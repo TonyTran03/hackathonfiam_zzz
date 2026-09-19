@@ -1,0 +1,11 @@
+# The data layer and the compliance checks were built and verified against
+# these exact versions. Pinned so every teammate regenerates identical files.
+pandas==2.3.1
+numpy==2.2.6
+pyarrow==25.0.1
+matplotlib==3.10.3
+
+# Needed by the modelling and evaluation stages, which are not written yet.
+# Left unpinned until those stages exist and have been run.
+scikit-learn
+statsmodels
