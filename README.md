@@ -101,6 +101,44 @@ Known gap: the dividend-inclusive market series stops at 2026-07. The index
 level series covers all 68 evaluation months; use it for the beta regression
 and the other as a cross-check.
 
+### `01_data/filing_features.py` — 8-K signals without reading the text
+
+```powershell
+python 01_data/filing_features.py --explore
+```
+
+Writes `filing_features.parquet`: one row per stock-month that has at least one
+filing, keyed by `target_month` = filing month + 1. Repeated filings are
+aggregated first — joining them raw would duplicate the panel's returns.
+
+**Join with a LEFT join and leave the gaps missing.** Only half the
+evaluation-window stock-months have any filing; dropping the rest would let
+filing coverage silently redefine the universe.
+
+What the training-window exploration says so far (target months ≤ 2018-12,
+5 comparisons, logged):
+
+| Signal | n | vs other filers | t |
+| --- | ---: | ---: | ---: |
+| Distress items 4.01/4.02 | 499 | **−1.386%/mo** | −2.0 |
+| Officer change 5.02 | 16,378 | −0.178% | −1.4 |
+| Filed late (> 4 days) | 10,938 | +0.072% | +0.4 |
+| Filing burst > 2× | 2,750 | +0.250% | +0.9 |
+
+Only the distress flag looks usable, and it is far too rare to sort a book on —
+it is meant as a veto overlay (bar from the long leg, prefer for the short),
+not as a predictor. Late filing and filing burst do **not** survive the correct
+control group; against *all* stock-months they look positive, but that is
+entirely the "this company filed anything at all" effect, which is itself
+largely size.
+
+The 5.02 result is the argument for the next step: 70k officer-change filings
+carry almost no signal in aggregate, which is what you would expect if a few
+abrupt departures are buried in mostly routine appointments. Separating those
+is a bounded classification task on the document in front of you — the one
+place in this pipeline where a language model earns its keep without risking
+look-ahead from what the model already knows about 2021–2026.
+
 ## Compliance checks
 
 `common/checks.py` covers two things the rules are explicit about:
