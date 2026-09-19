@@ -104,7 +104,7 @@ BETA_COL = "beta_use"
 BETA_SOURCES = ["betabab_1260d", "betadown_252d", "beta_60m"]
 VOL_COL = "rvol_21d"
 PANEL_COLS = ["permno", "target_month", "prc", "me", "size_grp", "gics",
-              VOL_COL, "ticker", "company_name"] + BETA_SOURCES
+              "dolvol", VOL_COL, "ticker", "company_name"] + BETA_SOURCES
 
 
 def screen(pred, quiet=False):
