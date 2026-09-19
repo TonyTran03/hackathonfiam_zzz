@@ -11,6 +11,7 @@ Discipline enforced here, and checked by run_checks.py:
   training rows need a realized answer; TEST ROWS DO NOT -- every stock in the
     month gets a prediction, so the outcome never decides the universe
 """
+import json
 import sys
 import time
 from pathlib import Path
@@ -217,6 +218,8 @@ def run():
         lambda s: (s - s.mean()) / (s.std(ddof=0) if s.std(ddof=0) else 1.0))
     pred["avg"] = z.mean(axis=1)
     pred.attrs["blend"] = winner
+    (C.PROCESSED_DIR / "blend.json").write_text(
+        json.dumps({"blend": winner, "parts": parts}), encoding="utf-8")
     val.to_parquet(C.PROCESSED_DIR / "validation_predictions.parquet", index=False,
                    compression="zstd")
     pred.to_parquet(OUT, index=False, compression="zstd")
