@@ -1,0 +1,8 @@
+{
+  "dataset_sha256": "797c01ebd59f7a14585cb2e0290aa0b2c43b9188b7ac16384762d3df615215ca",
+  "rows": 529082,
+  "features": 147,
+  "protocol_sha256": "89e434c24a420404e35dd34d90eb9f5ecb6bdf302b40c67038b0dee148154cf3",
+  "feature_nan_share": 0.10791533490931424,
+  "seed": 2026
+}
