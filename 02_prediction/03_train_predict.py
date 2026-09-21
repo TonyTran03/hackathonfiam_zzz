@@ -28,6 +28,9 @@ from common import config as C
 FEATURES_FILE = C.PROCESSED_DIR / "features_ranked.parquet"
 SPARSE_FILE = C.PROCESSED_DIR / "features_ranked_sparse.parquet"
 OUT = C.PROCESSED_DIR / "predictions.parquet"
+# Deck page 3 asks for the out-of-sample R2 of the methodology, so it has to
+# survive the run rather than scroll past in the terminal.
+METRICS_CSV = C.PROCESSED_DIR / "prediction_metrics.csv"
 
 # Coarse grids: this is a baseline, and a finer search is not what decides the
 # competition. Refine once something depends on it.
@@ -246,22 +249,41 @@ def run():
     # out-of-sample R-squared, benchmarked against zero as the rules specify.
     # Only forecasts in return units qualify; `avg` is a within-month ranking
     # score, so an R2 on it would be meaningless.
+    #
+    # These used to be printed and thrown away. The rules ask for the OOS R2 of
+    # the methodology on deck page 3, so they are written to a CSV that
+    # 11_deck_pack.py folds into deck_pack.csv. A number that exists only in a
+    # terminal scrollback cannot be quoted on a slide, and re-running the whole
+    # model to recover it the night before the deadline is not a plan.
     have = pred[pred[C.TARGET].notna()]
     y = have[C.TARGET].values
+    metrics = []
+
     print("\nout-of-sample R2 (benchmark = zero, not the historical mean):")
     for m in MODELS + ["avg_linear"]:
         r2 = 1 - np.sum((y - have[m].values) ** 2) / np.sum(y ** 2)
+        metrics.append({"model": m, "oos_r2": r2})
         print("  %-11s %+.4f%%" % (m, 100 * r2))
+    metrics.append({"model": "avg", "oos_r2": np.nan})
     print("  %-11s  (ranking score, not in return units -- no R2)" % "avg")
 
     # rank correlation with the realized answer says more about a long/short
     # book than squared error does
+    by_model = {d["model"]: d for d in metrics}
     print("\nmonthly rank correlation with the realized return:")
     for m in MODELS + ["avg_linear", "avg"]:
         ic = have.groupby("target_month").apply(
             lambda d: d[m].corr(d[C.TARGET], method="spearman"), include_groups=False)
+        by_model[m]["mean_ic"] = ic.mean()
+        by_model[m]["ic_positive_share"] = float((ic > 0).mean())
         print("  %-11s mean %+.4f   positive in %.0f%% of months"
               % (m, ic.mean(), 100 * (ic > 0).mean()))
+
+    frame = pd.DataFrame(metrics)
+    frame["is_blend_used_for_book"] = frame["model"].eq(pred.attrs["blend"])
+    frame["n_answered_rows"] = len(have)
+    frame.to_csv(METRICS_CSV, index=False)
+    print("\nwrote %s" % METRICS_CSV.relative_to(C.ROOT))
 
     print("\nThe rules note that 1-2%% R2 is typical even for neural networks, and "
           "that any positive number means some predictability. A large positive "
