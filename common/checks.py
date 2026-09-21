@@ -116,6 +116,39 @@ def check_split(df, train_mask, val_mask, test_mask, fold_label=""):
     return out
 
 
+def check_blend_choices(path, schedule):
+    """Any decision made per fold must use only that fold's validation block.
+
+    This is the check that was missing when the pooled blend selection
+    shipped. Each fold's train/validation/test split was clean and
+    check_split passed, but the choice of WHICH model to trade was made after
+    the loop, on every fold's validation data at once -- so the 2021 forecast
+    was picked partly on 2024-2025 outcomes. No per-fold check can see that,
+    because the leak lives BETWEEN the folds rather than inside one.
+
+    The general lesson: any decision that spans folds needs its own check.
+    """
+    import json
+    if not path.exists():
+        return [Finding("WARN", "blend record missing",
+                        "%s not found -- cannot verify how the traded model "
+                        "was chosen" % path.name)]
+    rec = json.loads(path.read_text(encoding="utf-8"))
+    if "per_fold" not in rec:
+        return [Finding("FAIL", "blend chosen across folds",
+                        "%s records one blend for every year. Pooling the "
+                        "validation blocks means an early year's model was "
+                        "chosen using later years' outcomes." % path.name)]
+    years = [t[3][:4] for t in schedule]
+    missing = [y for y in years if y not in rec["per_fold"]]
+    if missing:
+        return [Finding("FAIL", "folds with no recorded choice", str(missing))]
+    picks = {y: v["blend"] for y, v in sorted(rec["per_fold"].items())}
+    return [Finding("OK", "blend choice",
+                    "chosen inside each fold: "
+                    + ", ".join("%s=%s" % (k, v) for k, v in picks.items()))]
+
+
 def check_fit_rows(fit_mask, df, train_end, fold_label=""):
     """Scalers, medians and imputers must be fitted on training months only."""
     tag = " [%s]" % fold_label if fold_label else ""

@@ -43,6 +43,13 @@ def main(holdings_path=None):
     total_fail += f
     total_warn += w
 
+    f, w = checks.report(
+        checks.check_blend_choices(C.PROCESSED_DIR / "blend.json",
+                                   list(C.training_schedule())),
+        "model selection across folds")
+    total_fail += f
+    total_warn += w
+
     tm = df["target_month"]
     for train_end, val_start, val_end, test_start, test_end in C.training_schedule():
         train = tm <= train_end
