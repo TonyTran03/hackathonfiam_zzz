@@ -20,6 +20,7 @@ from common import config as C
 RETURNS = C.ROOT / "05_submission" / "portfolio_returns.csv"
 HOLDINGS = C.PROCESSED_DIR / "holdings.parquet"
 DAILY = C.ROOT / "05_submission" / "daily_returns.csv"
+METRICS = C.PROCESSED_DIR / "prediction_metrics.csv"
 OUT = C.ROOT / "05_submission" / "deck_pack.csv"
 
 rows = []
@@ -28,6 +29,44 @@ rows = []
 def put(section, label, value, note=""):
     rows.append({"section": section, "metric": label, "value": value, "note": note})
     print("  %-42s %s%s" % (label, value, ("   " + note) if note else ""))
+
+
+def _model_quality():
+    """Out-of-sample R2 and rank IC, from stage 3.
+
+    Deck page 3 asks for the OOS R2 of the methodology. Stage 3 computes it but
+    used to print it and move on, so it could not be quoted without re-running
+    the model. It now writes prediction_metrics.csv and this folds it in.
+
+    The rules note that 1-2% is typical even for neural networks and that any
+    positive number means some predictability, so the note carries that
+    context rather than leaving a reader to think the number looks small.
+    """
+    if not METRICS.exists():
+        put("model", "out-of-sample R2", "NOT AVAILABLE",
+            "re-run 02_prediction/03_train_predict.py to write %s" % METRICS.name)
+        return
+
+    q = pd.read_csv(METRICS)
+    blend = q.loc[q["is_blend_used_for_book"], "model"]
+    blend = blend.iloc[0] if len(blend) else None
+
+    for _, r in q.iterrows():
+        used = " <- drives the book" if r["model"] == blend else ""
+        if pd.isna(r["oos_r2"]):
+            value = "n/a"
+            note = "within-month ranking score, not in return units" + used
+        else:
+            value = "%+.4f%%" % (100 * r["oos_r2"])
+            note = ("1-2%% is typical; any positive number is predictability" + used
+                    if r["model"] == blend or used else used).strip()
+        put("model", "OOS R2, %s" % r["model"], value, note)
+
+    for _, r in q.iterrows():
+        if pd.isna(r.get("mean_ic")):
+            continue
+        put("model", "rank IC, %s" % r["model"], "%+.4f" % r["mean_ic"],
+            "positive in %.0f%% of months" % (100 * r["ic_positive_share"]))
 
 
 def main():
@@ -85,6 +124,7 @@ def main():
         "se=%.3f -- the neutrality evidence" % reg.bse["sp500_excess"])
     put("risk", "correlation with the S&P 500",
         "%+.2f" % m["excess_over_cash"].corr(m["sp500_ret"]))
+    _model_quality()
     curve = (1 + m["total"]).cumprod()
     put("risk", "maximum drawdown (monthly marks)",
         "%+.2f%%" % (100 * (curve / curve.cummax() - 1).min()))

@@ -131,8 +131,56 @@ def check_fit_rows(fit_mask, df, train_end, fold_label=""):
 # --------------------------------------------------------------------------
 # half two: the trading criteria
 # --------------------------------------------------------------------------
+def check_beta_neutrality(stats):
+    """Is the book neutral, or only dollar neutral?
+
+    The rules impose no numeric limit on beta, so nothing here is a rule
+    breach. They do say plainly that a dollar-neutral book which is long
+    high-beta names and short low-beta names is "a levered long position
+    wearing a disguise", and that they will read a realised beta far from zero
+    as a failure of the mandate rather than a stylistic choice. Dollar
+    neutrality is checked elsewhere and is not evidence of this.
+
+    `stats` needs a `beta_net` column: sum(w_i * beta_i) for each month.
+    Thresholds come from config.TEAM, not config.COMPETITION.
+    """
+    if "beta_net" not in stats.columns or stats["beta_net"].isna().all():
+        return [Finding("WARN", "beta neutrality",
+                        "no beta column available, so the book's market exposure "
+                        "was not checked -- dollar neutrality is not the same thing")]
+
+    t = C.TEAM
+    b = stats["beta_net"].dropna()
+    worst_month = b.abs().idxmax()
+    worst = b.loc[worst_month]
+
+    over_fail = b[b.abs() > t["beta_net_fail"]]
+    over_warn = b[b.abs() > t["beta_net_warn"]]
+
+    if len(over_fail):
+        return [Finding("FAIL", "beta neutrality (house standard, not a rule)",
+                        "%d of %d months carry a beta-weighted net beyond %+.2f "
+                        "(worst %+.3f in %s) -- this is a directional book"
+                        % (len(over_fail), len(b), t["beta_net_fail"],
+                           worst, worst_month))]
+    if len(over_warn):
+        return [Finding("WARN", "beta neutrality (house standard, not a rule)",
+                        "%d of %d months carry a beta-weighted net beyond %+.2f "
+                        "(worst %+.3f in %s) -- justify it or neutralise it"
+                        % (len(over_warn), len(b), t["beta_net_warn"],
+                           worst, worst_month))]
+    return [Finding("OK", "beta neutrality",
+                    "beta-weighted net within %+.2f every month "
+                    "(mean %+.3f, worst %+.3f in %s)"
+                    % (t["beta_net_warn"], b.mean(), worst, worst_month))]
+
+
 def check_holdings(holdings, panel=None):
     """`holdings`: one row per stock-month, columns permno / target_month / weight.
+
+    An optional `beta` column turns on the beta-neutrality check. Supply the
+    beta that was known at formation time, not one estimated over the test
+    period, or the check is answering a different question.
 
     Weights are a share of capital: positive long, negative short.
     Returns (findings, per-month statistics).
@@ -166,6 +214,17 @@ def check_holdings(holdings, panel=None):
         "n_short": by_month.apply(lambda w: (w < 0).sum()),
         "max_abs": by_month.apply(lambda w: w.abs().max()),
     })
+
+    if "beta" in h.columns:
+        b = pd.to_numeric(h["beta"], errors="coerce")
+        missing = int(b.isna().sum())
+        if missing:
+            out.append(Finding("WARN", "beta coverage",
+                               "%d of %d positions have no beta; the beta-weighted "
+                               "net treats them as zero exposure, which understates it"
+                               % (missing, len(h))))
+        stats["beta_net"] = (h["weight"] * b.fillna(0.0)).groupby(
+            h["target_month"]).sum()
 
     bad = stats[(stats["n"] < k["min_positions"]) | (stats["n"] > k["max_positions"])]
     if len(bad):
@@ -211,6 +270,8 @@ def check_holdings(holdings, panel=None):
         out.append(Finding("WARN", "single-position size",
                            "%d months hold a name above 10%% of capital (max %.1f%%)"
                            % (len(concentrated), stats["max_abs"].max() * 100)))
+
+    out.extend(check_beta_neutrality(stats))
 
     if panel is not None:
         key = panel[["permno", "target_month"]].drop_duplicates().assign(_tradable=1)
