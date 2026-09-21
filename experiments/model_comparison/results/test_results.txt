@@ -1,0 +1,10 @@
+test_cash_accounting_with_nonzero_net_exposure (__main__.ExperimentChecks.test_cash_accounting_with_nonzero_net_exposure) ... ok
+test_first_month_loss_counts_as_drawdown (__main__.ExperimentChecks.test_first_month_loss_counts_as_drawdown) ... ok
+test_saved_fold_dates_are_historical (__main__.ExperimentChecks.test_saved_fold_dates_are_historical) ... ok
+test_smoothing_uses_calendar_not_observation_count (__main__.ExperimentChecks.test_smoothing_uses_calendar_not_observation_count) ... ok
+test_test_outcomes_cannot_choose_annual_blend (__main__.ExperimentChecks.test_test_outcomes_cannot_choose_annual_blend) ... ok
+
+----------------------------------------------------------------------
+Ran 5 tests in 0.049s
+
+OK

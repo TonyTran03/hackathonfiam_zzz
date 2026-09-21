@@ -11,3 +11,13 @@ __pycache__/
 .venv/
 venv/
 .ipynb_checkpoints/
+
+# Model-comparison experiment: generated files
+experiments/model_comparison/cache/
+experiments/model_comparison/01_data/processed/
+experiments/model_comparison/results/*.parquet
+experiments/model_comparison/.venv/
+experiments/model_comparison/**/__pycache__/
+experiments/model_comparison/run.log
+
+.DS_Store
