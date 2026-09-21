@@ -56,6 +56,10 @@ GBM_FIXED = dict(objective="l2", n_estimators=3000, subsample=0.7,
                  verbose=-1, n_jobs=-1)
 GBM_EARLY_STOP = 50
 
+# Identifier / label columns that live in the sparse table but are not inputs
+KEYS_IN_SPARSE = {"permno", "target_month", "eom", "me", "size_grp", "gics",
+                  "ticker", "company_name"}
+
 
 def demean_and_clip(y, months, clip=3.0):
     """Remove each month's cross-sectional mean, then trim the tails.
@@ -145,8 +149,20 @@ def run():
     features = pd.read_csv(C.FACTOR_LIST_CSV)["variable"].tolist()
     df = pd.read_parquet(FEATURES_FILE,
                          columns=["permno", "target_month", C.TARGET] + features)
+
+    # The sparse table may carry extra columns -- the 8-K signals -- that the
+    # linear models cannot use (they need every cell filled, and "no filing"
+    # has no sensible fill). The trees take whatever is there.
+    import pyarrow.parquet as pq
+    available = set(pq.ParquetFile(SPARSE_FILE).schema_arrow.names)
+    extra = [c for c in available
+             if c not in features and c not in KEYS_IN_SPARSE and c != C.TARGET]
+    tree_features = features + sorted(extra)
     sparse = pd.read_parquet(SPARSE_FILE,
-                             columns=["permno", "target_month"] + features)
+                             columns=["permno", "target_month"] + tree_features)
+    if extra:
+        print("trees also see %d columns outside factor_char_list.csv: %s"
+              % (len(extra), ", ".join(sorted(extra))))
     assert (df["permno"].values == sparse["permno"].values).all() \
         and (df["target_month"].values == sparse["target_month"].values).all(), \
         "the filled and sparse feature tables are not row-aligned"
@@ -194,9 +210,9 @@ def run():
 
         # trees get the un-filled table and a month-demeaned, clipped answer
         gbm_test, gbm_val, rounds, cfg = fit_gbm(
-            sparse.loc[train, features], demean_and_clip(ytr, tm[train]),
-            sparse.loc[val, features], demean_and_clip(yva, tm[val]),
-            sparse.loc[test, features])
+            sparse.loc[train, tree_features], demean_and_clip(ytr, tm[train]),
+            sparse.loc[val, tree_features], demean_and_clip(yva, tm[val]),
+            sparse.loc[test, tree_features])
         # add the training mean back so the column is a return forecast again
         preds["gbm"], vpred["gbm"] = gbm_test + ymean, gbm_val + ymean
 
