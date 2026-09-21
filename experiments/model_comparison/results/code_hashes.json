@@ -1,0 +1,10 @@
+{
+  "baseline_portfolio.py": "5c2e51401c6d22a85666713daf241a05eba6d66e551f5e25797a39ecd70ca656",
+  "common/__init__.py": "9048e1cfcf655d6367b5a81db031a3b21959c0bf8d21bb200307f9deca55c652",
+  "common/config.py": "f5c04c4586c961326d271cc54aad168621dd5cb25dec92146a6169a95dfa673a",
+  "data_loader.py": "c6fa97b4b32b0d3306f45130a022c8b709133474bc1eb068d174e03876f97c2e",
+  "evaluate_comparison.py": "dfee4d86ddcf1f9eec3c15e96debaecc5414677f07b305c65473c806d2e84413",
+  "make_report.py": "5819bd145fceb23c50de778ddca5788c25d8720bbaad9359a563250d8f9ced60",
+  "run_comparison.py": "04b841884e6a12458abb7ad877c3bdc283c0dfdb1db1b0beb5c6461bb271197b",
+  "test_experiment.py": "dc91e42bf43b5ca7031d3188e1d6abf93051753c62f2a30faa2b5b35418e5767"
+}
