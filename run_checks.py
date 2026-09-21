@@ -18,6 +18,9 @@ from common import checks
 from common import config as C
 
 
+BUILT_HOLDINGS = C.PROCESSED_DIR / "holdings.parquet"
+
+
 def load_holdings(path):
     df = pd.read_csv(path)
     df.columns = [c.strip().lower() for c in df.columns]
@@ -28,6 +31,37 @@ def load_holdings(path):
             raise SystemExit("holdings file needs target_month or a date column")
         df["target_month"] = pd.to_datetime(df[date_col]).dt.to_period("M").astype(str)
     return df[["target_month", "permno", "weight"]]
+
+
+def attach_betas(h):
+    """Add the beta each position was sized on, so neutrality can be checked.
+
+    Preference order matters. `beta_use` from stage 4 is the number the book
+    was actually built with, so checking against it answers "did the
+    construction do what it intended". Falling back to the panel's raw
+    `beta_60m` answers a slightly different and weaker question, so the source
+    is printed either way.
+    """
+    if BUILT_HOLDINGS.exists():
+        built = pd.read_parquet(BUILT_HOLDINGS,
+                                columns=["permno", "target_month", "beta_use"])
+        merged = h.merge(built.rename(columns={"beta_use": "beta"}),
+                         on=["permno", "target_month"], how="left")
+        if merged["beta"].notna().any():
+            print("  betas from holdings.parquet (beta_use, as the book was sized)")
+            return merged
+
+    try:
+        panel = pd.read_parquet(C.MODEL_TABLE,
+                                columns=["permno", "target_month", "beta_60m"])
+    except (OSError, ValueError, KeyError):
+        print("  no beta source found; beta neutrality will not be checked")
+        return h
+
+    merged = h.merge(panel.rename(columns={"beta_60m": "beta"}),
+                     on=["permno", "target_month"], how="left")
+    print("  betas from the panel (beta_60m) -- stage 4's beta_use was unavailable")
+    return merged
 
 
 def main(holdings_path=None):
@@ -56,7 +90,7 @@ def main(holdings_path=None):
         total_warn += w
 
     if holdings_path:
-        h = load_holdings(holdings_path)
+        h = attach_betas(load_holdings(holdings_path))
         panel = pd.read_parquet(C.MODEL_TABLE, columns=["permno", "target_month"])
         findings, stats = checks.check_holdings(h, panel=panel)
         f, w = checks.report(findings, "trading criteria")
