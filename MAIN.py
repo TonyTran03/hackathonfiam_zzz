@@ -22,12 +22,20 @@ STAGES = (
 )
 CHECKS = "run_checks.py"
 
+# run_checks.py runs the look-ahead half unconditionally, but the trading
+# criteria half only when it is handed a book. Without this argument the
+# position-count, gross, net, both-legs and month-coverage checks never run,
+# and the gate passes on a book that breaks the rules.
+SUBMISSION_HOLDINGS = "05_submission/holdings.csv"
 
-def run(script):
+
+def run(script, *args):
+    label = " ".join([script, *args])
     print("\n" + "=" * 70)
-    print("RUN  %s" % script)
+    print("RUN  %s" % label)
     print("=" * 70, flush=True)
-    return subprocess.call([sys.executable, str(ROOT / script)], cwd=str(ROOT))
+    return subprocess.call([sys.executable, str(ROOT / script), *args],
+                           cwd=str(ROOT))
 
 
 def main(argv):
@@ -49,7 +57,14 @@ def main(argv):
         print("\nAll stages finished. Compliance gate skipped (--no-check).")
         return 0
 
-    code = run(CHECKS)
+    holdings = ROOT / SUBMISSION_HOLDINGS
+    if not holdings.exists():
+        print("\nAll stages finished, but %s was not written, so the trading "
+              "criteria cannot be checked." % SUBMISSION_HOLDINGS)
+        print("Stage 4 should have produced it. Refusing to report a pass.")
+        return 1
+
+    code = run(CHECKS, SUBMISSION_HOLDINGS)
     if code != 0:
         print("\nAll stages finished, but the compliance check FAILED.")
         print("The book or the data splits break a competition rule -- fix before submitting.")
