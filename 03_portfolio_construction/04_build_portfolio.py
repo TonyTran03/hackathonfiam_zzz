@@ -104,7 +104,7 @@ BETA_COL = "beta_use"
 BETA_SOURCES = ["betabab_1260d", "betadown_252d", "beta_60m"]
 VOL_COL = "rvol_21d"
 PANEL_COLS = ["permno", "target_month", "prc", "me", "size_grp", "gics",
-              VOL_COL, "ticker", "company_name"] + BETA_SOURCES
+              "dolvol", VOL_COL, "ticker", "company_name"] + BETA_SOURCES
 
 
 def screen(pred, quiet=False):
@@ -314,6 +314,71 @@ def tune_turnover(screened_val, market=None):
     return best
 
 
+def fill_labels(h):
+    """Give every holding a ticker and company name, and say where each came from.
+
+    The panel leaves 14,645 stock-months unlabelled on purpose -- historical
+    names were deliberately not backfilled from later ones, and in 2026 the
+    labels depend on which filings were retained. That leaves holdings the deck
+    cannot name, while the rules require every holding, chart label and table
+    row to carry a ticker and full company name.
+
+    So carry a label in from the same stock's nearest labelled month and record
+    which month it came from. Labels from BEFORE the holding month are
+    preferred: a name in month t is far likelier to match t-1 than t+12, and
+    the rules warn specifically against substituting a later name without
+    verification. Anything carried back from the future is flagged so it can be
+    checked by hand before it reaches a slide.
+    """
+    panel = pd.read_parquet(C.MODEL_TABLE,
+                            columns=["permno", "target_month", "ticker", "company_name"])
+    known = panel[panel["ticker"].notna()].copy()
+    known["src_ord"] = pd.PeriodIndex(known["target_month"], freq="M").astype("int64")
+    known = known.rename(columns={"target_month": "src_month"})
+    known = known.sort_values(["src_ord", "permno"])
+
+    h = h.copy()
+    h["label_basis"] = np.where(h["ticker"].notna(), "same month", None)
+    h["label_from"] = np.where(h["ticker"].notna(), h["target_month"], None)
+
+    missing = h["ticker"].isna()
+    if not missing.any():
+        print("  labels: every holding named from its own month")
+        return h
+
+    need = h.loc[missing, ["permno", "target_month"]].copy()
+    need["ord"] = pd.PeriodIndex(need["target_month"], freq="M").astype("int64")
+    need = need.sort_values(["ord", "permno"])
+
+    back = pd.merge_asof(need, known, left_on="ord", right_on="src_ord",
+                         by="permno", direction="backward")
+    fwd = pd.merge_asof(need, known, left_on="ord", right_on="src_ord",
+                        by="permno", direction="forward")
+
+    use_back = back["ticker"].notna().values
+    out = back.copy()
+    for col in ["ticker", "company_name", "src_month"]:
+        out[col] = np.where(use_back, back[col].values, fwd[col].values)
+    out["label_basis"] = np.where(
+        use_back, "carried forward from an earlier month",
+        "CARRIED BACK FROM A LATER MONTH -- verify by hand")
+
+    key = out.set_index(["permno", "target_month"])
+    idx = h.index[missing]
+    pairs = pd.MultiIndex.from_arrays(
+        [h.loc[idx, "permno"].values, h.loc[idx, "target_month"].values])
+    for dst, src in [("ticker", "ticker"), ("company_name", "company_name"),
+                     ("label_from", "src_month"), ("label_basis", "label_basis")]:
+        h.loc[idx, dst] = key[src].reindex(pairs).values
+
+    for k, v in h["label_basis"].value_counts().items():
+        print("  labels: %-52s %d" % (k, v))
+    still = int(h["ticker"].isna().sum())
+    if still:
+        print("  WARNING: %d holdings still unnamed" % still)
+    return h
+
+
 def load_market():
     """Monthly market return in excess of cash, indexed by target month."""
     bm = pd.read_csv(C.BENCHMARK_CSV)
@@ -351,6 +416,7 @@ def build(tune=True):
     h = make_book(pred, smooth, buffer_mult, market=market)
     h["date"] = pd.PeriodIndex(h["target_month"], freq="M").to_timestamp()
     print("\nsmoothing %d months, buffer %.1fx" % (smooth, buffer_mult))
+    h = fill_labels(h)
 
     C.PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
     h.to_parquet(OUT, index=False, compression="zstd")
@@ -359,6 +425,9 @@ def build(tune=True):
        .rename(columns={"date": "DATE", "permno": "PERMNO", "ticker": "TICKER",
                         "company_name": "COMPANY_NAME", "weight": "WEIGHT"})
        .to_csv(SUBMISSION_CSV, index=False))
+    # provenance for every label, so the deck can cite where each name came from
+    (h[["date", "permno", "ticker", "company_name", "label_basis", "label_from"]]
+       .to_csv(C.ROOT / "05_submission" / "holdings_label_provenance.csv", index=False))
 
     stats = h.groupby("target_month").apply(
         lambda d: pd.Series({
