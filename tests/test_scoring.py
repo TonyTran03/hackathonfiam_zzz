@@ -105,6 +105,18 @@ def test_missing_returns_are_counted_and_filled():
     expect(C.TEAM["delisting_return"] == 0.0,
            "config.TEAM records the zero fill so the sensitivity is a one-line change")
 
+    # The scorer must READ the mark from config, not hardcode it. Flip it to
+    # the Shumway -30% and the missing short (weight -0.5) must now gain 0.15.
+    saved = C.TEAM["delisting_return"]
+    try:
+        C.TEAM["delisting_return"] = -0.30
+        m = ev.monthly_returns(h)
+        expect(close(m["spread"].iloc[0], 0.05 + 0.15),
+               "a -30% delisting mark on a missing short adds |w| * 0.30 to the spread",
+               m["spread"].iloc[0])
+    finally:
+        C.TEAM["delisting_return"] = saved
+
 
 # --------------------------------------------------------------------------
 # turnover

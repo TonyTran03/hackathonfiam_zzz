@@ -107,13 +107,18 @@ def monthly_ic(df, col, target):
         include_groups=False).mean()
 
 
-def choose_blend(val):
-    """Decide what to trade using the VALIDATION blocks only.
+def choose_blend(val, label=""):
+    """Decide what to trade using ONE fold's validation block.
 
     The tree and the linear models could be combined, or the tree traded on
     its own. Reading that off the test period is how a backtest gets chosen
-    rather than measured, so the comparison happens here, on data the final
-    scoring never sees.
+    rather than measured, so the comparison happens on validation data.
+
+    It must be ONE fold's block, not all of them pooled. Pooling means the
+    2021 forecast is chosen partly on 2024-2025 outcomes, which is look-ahead
+    even though every individual fold's train/validation/test split is clean.
+    Our compliance checks missed it because they verify splits inside a fold
+    and this decision happens after the loop.
     """
     candidates = {
         "gbm": ["gbm"],
@@ -127,11 +132,10 @@ def choose_blend(val):
             lambda s: (s - s.mean()) / (s.std(ddof=0) if s.std(ddof=0) else 1.0))
         tmp = val.assign(_blend=z.mean(axis=1))
         scores[name] = monthly_ic(tmp, "_blend", C.TARGET)
-    print("\nblend selection, on the VALIDATION blocks only:")
-    for name, ic in sorted(scores.items(), key=lambda kv: -kv[1]):
-        print("  %-12s validation rank correlation %+.4f" % (name, ic))
     winner = max(scores, key=scores.get)
-    print("  -> trading '%s'" % winner)
+    ranked = "  ".join("%s %+.4f" % (k, v)
+                       for k, v in sorted(scores.items(), key=lambda kv: -kv[1]))
+    print("  [%s] %s   -> %s" % (label, ranked, winner))
     return winner, candidates[winner]
 
 
@@ -172,7 +176,8 @@ def run():
     tm = df["target_month"]
     answered = df[C.TARGET].notna()
 
-    out, val_out = [], []
+    out, val_out, fold_labels = [], [], []
+    blend_choices = {}
     for train_end, val_start, val_end, test_start, test_end in C.training_schedule():
         t0 = time.time()
         train = (tm <= train_end) & answered
@@ -221,24 +226,41 @@ def run():
 
         out.append(preds)
         val_out.append(vpred)
+        fold_labels.append(test_start[:4])
         print("test %s  train<=%s n=%s  test n=%s  lasso=%.1e ridge=%.1e en=%.1e  "
               "gbm leaves=%d rounds=%d  %.0fs"
               % (test_start[:4], train_end, format(int(train.sum()), ","),
                  format(int(test.sum()), ","), a, r, e,
                  cfg["num_leaves"], rounds, time.time() - t0), flush=True)
 
+    # Blend choice is made PER FOLD, on that fold's validation block alone.
+    #
+    # Pooling every fold's validation and picking one blend for all six years
+    # leaks: the 2021 forecast would be chosen partly on 2024-2025 realized
+    # returns. Using 2021-2022 outcomes to choose the 2023 model is fine --
+    # by January 2023 you know them -- and that is the schedule the rules
+    # specify. Using 2025 outcomes to choose the 2021 model is not.
+    #
+    # The earlier pooled version picked "gbm" for all six years. Per fold the
+    # answer differs in three of them, so this is not a cosmetic correction.
+    for label, preds, vpred in zip(fold_labels, out, val_out):
+        for frame in (preds, vpred):
+            frame["avg_linear"] = frame[LINEAR_MODELS].mean(axis=1)
+        winner, parts = choose_blend(vpred, label)
+        z = preds.groupby("target_month")[parts].transform(
+            lambda s: (s - s.mean()) / (s.std(ddof=0) if s.std(ddof=0) else 1.0))
+        preds["avg"] = z.mean(axis=1)
+        preds["blend"] = winner
+        blend_choices[label] = {"blend": winner, "parts": parts}
+
     pred = pd.concat(out, ignore_index=True)
     val = pd.concat(val_out, ignore_index=True)
-    for frame in (pred, val):
-        frame["avg_linear"] = frame[LINEAR_MODELS].mean(axis=1)
 
-    winner, parts = choose_blend(val)
-    z = pred.groupby("target_month")[parts].transform(
-        lambda s: (s - s.mean()) / (s.std(ddof=0) if s.std(ddof=0) else 1.0))
-    pred["avg"] = z.mean(axis=1)
-    pred.attrs["blend"] = winner
     (C.PROCESSED_DIR / "blend.json").write_text(
-        json.dumps({"blend": winner, "parts": parts}), encoding="utf-8")
+        json.dumps({"per_fold": blend_choices,
+                    "note": "chosen inside each fold on that fold's validation "
+                            "block only; never pooled across folds"},
+                   indent=2), encoding="utf-8")
     val.to_parquet(C.PROCESSED_DIR / "validation_predictions.parquet", index=False,
                    compression="zstd")
     pred.to_parquet(OUT, index=False, compression="zstd")
@@ -246,15 +268,25 @@ def run():
     print("\nwrote %s (%s rows, %s months)"
           % (OUT.name, format(len(pred), ","), pred["target_month"].nunique()))
 
-    # out-of-sample R-squared, benchmarked against zero as the rules specify.
-    # Only forecasts in return units qualify; `avg` is a within-month ranking
-    # score, so an R2 on it would be meaningless.
-    #
-    # These used to be printed and thrown away. The rules ask for the OOS R2 of
-    # the methodology on deck page 3, so they are written to a CSV that
-    # 11_deck_pack.py folds into deck_pack.csv. A number that exists only in a
-    # terminal scrollback cannot be quoted on a slide, and re-running the whole
-    # model to recover it the night before the deadline is not a plan.
+    write_metrics(pred, blend_choices)
+    return pred
+
+
+def write_metrics(pred, blend_choices):
+    """Out-of-sample R2 and rank correlation for every model -> prediction_metrics.csv
+
+    Out-of-sample R-squared is benchmarked against zero as the rules specify.
+    Only forecasts in return units qualify; `avg` is a within-month ranking
+    score, so an R2 on it would be meaningless.
+
+    These used to be printed and thrown away. The rules ask for the OOS R2 of
+    the methodology on deck page 3, so they are written to a CSV that
+    11_deck_pack.py folds into deck_pack.csv. A number that exists only in a
+    terminal scrollback cannot be quoted on a slide, and re-running the whole
+    model to recover it the night before the deadline is not a plan -- so
+    `python 02_prediction/03_train_predict.py --metrics-only` recomputes this
+    from the saved predictions and blend.json without retraining.
+    """
     have = pred[pred[C.TARGET].notna()]
     y = have[C.TARGET].values
     metrics = []
@@ -280,16 +312,34 @@ def run():
               % (m, ic.mean(), 100 * (ic > 0).mean()))
 
     frame = pd.DataFrame(metrics)
-    frame["is_blend_used_for_book"] = frame["model"].eq(pred.attrs["blend"])
+    # The traded score `avg` is assembled PER FOLD from the parts recorded in
+    # blend.json, so "used for the book" is a set of models and years rather
+    # than one name. (This used to read a single-blend attribute that the
+    # per-fold selection no longer sets; the merge of the two changes broke
+    # MAIN.py here, which is why the standalone mode above exists.)
+    years_by_part = {}
+    for year, choice in sorted(blend_choices.items()):
+        for part in choice["parts"]:
+            years_by_part.setdefault(part, []).append(str(year))
+    frame["is_blend_used_for_book"] = frame["model"].isin(years_by_part) | frame["model"].eq("avg")
+    frame["blend_years"] = frame["model"].map(
+        lambda name: "all" if name == "avg" else ",".join(years_by_part.get(name, [])))
     frame["n_answered_rows"] = len(have)
     frame.to_csv(METRICS_CSV, index=False)
     print("\nwrote %s" % METRICS_CSV.relative_to(C.ROOT))
+    print("  traded blend by year: %s"
+          % ", ".join("%s=%s" % (y, c["blend"]) for y, c in sorted(blend_choices.items())))
 
-    print("\nThe rules note that 1-2%% R2 is typical even for neural networks, and "
+    print("\nThe rules note that 1-2% R2 is typical even for neural networks, and "
           "that any positive number means some predictability. A large positive "
           "number means a leak.")
-    return pred
+    return frame
 
 
 if __name__ == "__main__":
-    run()
+    if "--metrics-only" in sys.argv[1:]:
+        saved = pd.read_parquet(OUT)
+        choices = json.loads((C.PROCESSED_DIR / "blend.json").read_text(encoding="utf-8"))["per_fold"]
+        write_metrics(saved, choices)
+    else:
+        run()
