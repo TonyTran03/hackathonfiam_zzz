@@ -84,6 +84,18 @@ BETA_FEEDBACK_WINDOW = 24     # months of history used to measure
 BETA_FEEDBACK_MIN = 12        # months required before the measurement is used
 BETA_FEEDBACK_WEIGHT = 0.6    # how far to move from estimate toward measurement
 
+# Pre-registered variants, see 05_submission/deck/protocol_variants.md. Both
+# are OFF for the traded book; MAIN.py passes no argument. `--variant S` caps
+# each GICS sector's long-minus-short COUNT at +/-SECTOR_COUNT_CAP, `--variant
+# B` measures the legs' realised beta over 12 months instead of 24. One run
+# each, reported either way, adopted only if the team decides so before the
+# model freeze.
+SECTOR_COUNT_CAP = None
+VARIANTS = {
+    "S": dict(SECTOR_COUNT_CAP=5),
+    "B": dict(BETA_FEEDBACK_WINDOW=12, BETA_FEEDBACK_MIN=9),
+}
+
 # Only the FIRST fold's validation block sits entirely before the evaluation
 # window; later folds validate on months inside 2021-2026 and so cannot be
 # used to choose anything. That leaves 24 clean months -- thin, and said so.
@@ -181,6 +193,43 @@ def select(scores, held_long, held_short, buffer_mult=None):
     return longs, shorts
 
 
+def cap_sectors(longs, shorts, scores, sector, cap):
+    """Variant S: keep every sector's long-minus-short count inside +/-cap.
+
+    Residualising the score on sector dummies removes each sector's MEAN but
+    not its skew, so the global ranking still lands 27 tech shorts against 8
+    tech longs. Each pass swaps the marginal name in the most unbalanced
+    sector for the best unselected candidate from a sector that has room; the
+    total excess over the cap falls by one per pass, so it terminates. Held
+    names enjoy no protection here -- neutrality outranks the turnover buffer.
+    """
+    longs, shorts = list(longs), list(shorts)
+    for _ in range(600):
+        diff = (pd.Series([sector[i] for i in longs]).value_counts()
+                  .subtract(pd.Series([sector[i] for i in shorts]).value_counts(), fill_value=0))
+        over, under = diff[diff > cap], diff[diff < -cap]
+        if over.empty and under.empty:
+            break
+        chosen = set(longs) | set(shorts)
+        if not over.empty and (under.empty or over.max() >= -under.min()):
+            sec = over.idxmax()
+            victim = min((i for i in longs if sector[i] == sec), key=lambda i: scores[i])
+            room = [i for i in scores.sort_values(ascending=False).index
+                    if i not in chosen and diff.get(sector[i], 0) + 1 <= cap]
+            if not room:
+                break
+            longs[longs.index(victim)] = room[0]
+        else:
+            sec = under.idxmin()
+            victim = max((i for i in shorts if sector[i] == sec), key=lambda i: scores[i])
+            room = [i for i in scores.sort_values(ascending=True).index
+                    if i not in chosen and diff.get(sector[i], 0) - 1 >= -cap]
+            if not room:
+                break
+            shorts[shorts.index(victim)] = room[0]
+    return longs, shorts
+
+
 def leg_weights(vol):
     """Inverse volatility, capped, summing to 1."""
     v = vol.clip(lower=vol.quantile(0.05), upper=vol.quantile(0.95))
@@ -248,6 +297,9 @@ def make_book(pred, smooth_months, buffer_mult, market=None):
         held_l = set(g.index[g["permno"].isin(held_long)])
         held_s = set(g.index[g["permno"].isin(held_short)])
         longs, shorts = select(g["score"], held_l, held_s, buffer_mult)
+        if SECTOR_COUNT_CAP is not None:
+            sector = g["gics"].astype(str).str[:2].where(g["gics"].notna(), "na")
+            longs, shorts = cap_sectors(longs, shorts, g["score"], sector, SECTOR_COUNT_CAP)
 
         L, S = g.loc[longs].copy(), g.loc[shorts].copy()
         wl, ws = leg_weights(L[VOL_COL]), leg_weights(S[VOL_COL])
@@ -451,4 +503,13 @@ def build(tune=True):
 
 
 if __name__ == "__main__":
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--variant", choices=sorted(VARIANTS), default=None,
+                    help="run ONE pre-registered variant instead of the traded book")
+    args = ap.parse_args()
+    if args.variant:
+        for k, v in VARIANTS[args.variant].items():
+            globals()[k] = v
+        print("VARIANT %s: %s  (not the traded book)" % (args.variant, VARIANTS[args.variant]))
     build()
