@@ -43,7 +43,12 @@ def monthly_returns(h):
     """Weighted excess-return spread, and each leg separately."""
     h = h.copy()
     unavailable = h[C.TARGET].isna()
-    h["r"] = h[C.TARGET].fillna(0.0)          # delisted: no return recorded
+    # A held position with no realised return (delisted, acquired, or the
+    # panel simply stops) is marked at config.TEAM["delisting_return"]. The
+    # mark is a team convention, not a rule, so it lives in TEAM and the
+    # sensitivity grid next to it is reported by 11_deck_pack.py. Shumway
+    # (1997) is the usual reference for -0.30; 0.0 is the optimistic default.
+    h["r"] = h[C.TARGET].fillna(C.TEAM["delisting_return"])
     h["contrib"] = h["weight"] * h["r"]
 
     g = h.groupby("target_month")
@@ -144,8 +149,10 @@ def evaluate():
     print("  largest single position        %8.2f%%" % (100 * m["max_abs_w"].max()))
     print("  monthly turnover               %8.1f%%  (range %.0f%% .. %.0f%%)"
           % (100 * to.mean(), 100 * to.min(), 100 * to.max()))
-    print("  positions with no return data  %8d  of %s"
-          % (int(m["n_missing_ret"].sum()), format(len(h), ",")))
+    print("  positions with no return data  %8d  of %s   (marked at %+.0f%%; "
+          "sensitivity in deck_pack.csv)"
+          % (int(m["n_missing_ret"].sum()), format(len(h), ","),
+             100 * C.TEAM["delisting_return"]))
 
     print("\nBY CALENDAR YEAR")
     m["year"] = m["target_month"].str[:4]

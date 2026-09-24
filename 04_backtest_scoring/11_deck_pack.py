@@ -48,18 +48,19 @@ def _model_quality():
         return
 
     q = pd.read_csv(METRICS)
-    blend = q.loc[q["is_blend_used_for_book"], "model"]
-    blend = blend.iloc[0] if len(blend) else None
 
+    # The blend is chosen per fold, so several models feed the book in
+    # different years; blend_years says which.
     for _, r in q.iterrows():
-        used = " <- drives the book" if r["model"] == blend else ""
+        years = r.get("blend_years", "")
+        years = "" if pd.isna(years) else str(years)
+        used = (" <- in the traded blend, %s" % years) if bool(r["is_blend_used_for_book"]) and years else ""
         if pd.isna(r["oos_r2"]):
             value = "n/a"
             note = "within-month ranking score, not in return units" + used
         else:
             value = "%+.4f%%" % (100 * r["oos_r2"])
-            note = ("1-2%% is typical; any positive number is predictability" + used
-                    if r["model"] == blend or used else used).strip()
+            note = ("1-2% is typical; any positive number is predictability" + used) if used else ""
         put("model", "OOS R2, %s" % r["model"], value, note)
 
     for _, r in q.iterrows():
@@ -131,9 +132,17 @@ def main():
     if DAILY.exists():
         d = pd.read_csv(DAILY)
         c = (1 + d["total"]).cumprod()
+        # the coverage figure must come from the run that produced the daily
+        # series, not from a remembered number
+        cov_file = DAILY.parent / "daily_coverage.csv"
+        if cov_file.exists():
+            cov = pd.read_csv(cov_file)["weight_covered"]
+            caveat = "%.1f%% of book covered by weight (worst %.1f%%) -- optimistic" % (
+                100 * cov.mean(), 100 * cov.min())
+        else:
+            caveat = "coverage unknown -- run 10_daily_risk.py"
         put("risk", "maximum drawdown (daily marks)",
-            "%+.2f%%" % (100 * (c / c.cummax() - 1).min()),
-            "82.3% of book covered -- optimistic")
+            "%+.2f%%" % (100 * (c / c.cummax() - 1).min()), caveat)
         put("risk", "worst single day", "%+.2f%%" % (100 * d["total"].min()),
             "same coverage caveat")
 
@@ -184,6 +193,51 @@ def main():
     put("short_book", "share of short leg in small caps or below",
         "%.1f%%" % (100 * S["size_grp"].isin(["nano", "micro", "small"]).mean()),
         "nano/micro excluded by screen")
+
+    print("\nDELISTING MARK -- held positions with no realised return")
+    # The panel has no return for a stock-month when the security stops
+    # trading inside the holding month. Stage 5 marks those at
+    # config.TEAM["delisting_return"]; this reports how much the headline
+    # depends on that choice. A -30% mark is the usual delisting convention
+    # (Shumway 1997). For a SHORT position a negative mark is a gain, so the
+    # direction of the effect depends on which leg the missing names sit in.
+    gone = h[h[C.TARGET].isna()]
+    put("delisting", "positions with no realised return",
+        "%d of %s" % (len(gone), format(len(h), ",")),
+        "%d long / %d short" % (int((gone["weight"] > 0).sum()),
+                                int((gone["weight"] < 0).sum())))
+    put("delisting", "gross weight in such positions",
+        "%.2f%% of capital, summed over all months" % (100 * gone["weight"].abs().sum()),
+        "worst single month %.2f%%" % (100 * gone.groupby("target_month")["weight"]
+                                       .apply(lambda w: w.abs().sum()).max())
+        if len(gone) else "")
+    base_mark = C.TEAM["delisting_return"]
+    marks = list(C.TEAM["delisting_sensitivity"])
+    if base_mark not in marks:
+        marks.insert(0, base_mark)
+    cash = m["cash_monthly"].values
+    for mark in marks:
+        r = h[C.TARGET].fillna(mark)
+        spread = ((h["weight"] * r).groupby(h["target_month"]).sum()
+                  .reindex(m["target_month"]).fillna(0.0).values)
+        tot = cash + spread
+        act = tot - m["hurdle"].values
+        put("delisting", "IR with missing returns marked at %+.0f%%" % (100 * mark),
+            "%+.2f" % (np.sqrt(12) * act.mean() / act.std(ddof=1)),
+            "CAGR %+.2f%%%s" % (100 * (np.prod(1 + tot) ** (1 / yrs) - 1),
+                               "  <- the mark behind the headline" if mark == base_mark else ""))
+    # the stress bound from the model-comparison experiment: every missing
+    # long is wiped out and every missing short doubles against us
+    r = h[C.TARGET].copy()
+    r[r.isna() & (h["weight"] > 0)] = -1.0
+    r[r.isna() & (h["weight"] < 0)] = 1.0
+    spread = ((h["weight"] * r).groupby(h["target_month"]).sum()
+              .reindex(m["target_month"]).fillna(0.0).values)
+    tot = cash + spread
+    act = tot - m["hurdle"].values
+    put("delisting", "IR, adverse stress (longs -100%, shorts +100%)",
+        "%+.2f" % (np.sqrt(12) * act.mean() / act.std(ddof=1)),
+        "CAGR %+.2f%% -- a bound, not a likely case" % (100 * (np.prod(1 + tot) ** (1 / yrs) - 1)))
 
     print("\nCOST SENSITIVITY (the number that decides whether this is tradable)")
     notional = traded.reindex(m["target_month"]).fillna(0.0).values
