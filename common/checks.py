@@ -20,6 +20,12 @@ class Finding:
     level: str      # "FAIL" | "WARN" | "OK"
     check: str
     detail: str
+    # True: a competition rule from config.COMPETITION -- a FAIL blocks the gate.
+    # False: a house standard from config.TEAM -- printed at the same severity,
+    # but run_checks.py does not fail the chain on it. The distinction matters
+    # because the beta control deliberately carries an ex-ante beta tilt to
+    # offset the realised gap between estimated and actual leg betas.
+    rule: bool = True
 
     def __str__(self):
         mark = {"FAIL": "[FAIL]", "WARN": "[WARN]", "OK": "[ ok ]"}[self.level]
@@ -116,6 +122,39 @@ def check_split(df, train_mask, val_mask, test_mask, fold_label=""):
     return out
 
 
+def check_blend_choices(path, schedule):
+    """Any decision made per fold must use only that fold's validation block.
+
+    This is the check that was missing when the pooled blend selection
+    shipped. Each fold's train/validation/test split was clean and
+    check_split passed, but the choice of WHICH model to trade was made after
+    the loop, on every fold's validation data at once -- so the 2021 forecast
+    was picked partly on 2024-2025 outcomes. No per-fold check can see that,
+    because the leak lives BETWEEN the folds rather than inside one.
+
+    The general lesson: any decision that spans folds needs its own check.
+    """
+    import json
+    if not path.exists():
+        return [Finding("WARN", "blend record missing",
+                        "%s not found -- cannot verify how the traded model "
+                        "was chosen" % path.name)]
+    rec = json.loads(path.read_text(encoding="utf-8"))
+    if "per_fold" not in rec:
+        return [Finding("FAIL", "blend chosen across folds",
+                        "%s records one blend for every year. Pooling the "
+                        "validation blocks means an early year's model was "
+                        "chosen using later years' outcomes." % path.name)]
+    years = [t[3][:4] for t in schedule]
+    missing = [y for y in years if y not in rec["per_fold"]]
+    if missing:
+        return [Finding("FAIL", "folds with no recorded choice", str(missing))]
+    picks = {y: v["blend"] for y, v in sorted(rec["per_fold"].items())}
+    return [Finding("OK", "blend choice",
+                    "chosen inside each fold: "
+                    + ", ".join("%s=%s" % (k, v) for k, v in picks.items()))]
+
+
 def check_fit_rows(fit_mask, df, train_end, fold_label=""):
     """Scalers, medians and imputers must be fitted on training months only."""
     tag = " [%s]" % fold_label if fold_label else ""
@@ -147,7 +186,7 @@ def check_beta_neutrality(stats):
     if "beta_net" not in stats.columns or stats["beta_net"].isna().all():
         return [Finding("WARN", "beta neutrality",
                         "no beta column available, so the book's market exposure "
-                        "was not checked -- dollar neutrality is not the same thing")]
+                        "was not checked -- dollar neutrality is not the same thing", rule=False)]
 
     t = C.TEAM
     b = stats["beta_net"].dropna()
@@ -162,17 +201,17 @@ def check_beta_neutrality(stats):
                         "%d of %d months carry a beta-weighted net beyond %+.2f "
                         "(worst %+.3f in %s) -- this is a directional book"
                         % (len(over_fail), len(b), t["beta_net_fail"],
-                           worst, worst_month))]
+                           worst, worst_month), rule=False)]
     if len(over_warn):
         return [Finding("WARN", "beta neutrality (house standard, not a rule)",
                         "%d of %d months carry a beta-weighted net beyond %+.2f "
                         "(worst %+.3f in %s) -- justify it or neutralise it"
                         % (len(over_warn), len(b), t["beta_net_warn"],
-                           worst, worst_month))]
+                           worst, worst_month), rule=False)]
     return [Finding("OK", "beta neutrality",
                     "beta-weighted net within %+.2f every month "
                     "(mean %+.3f, worst %+.3f in %s)"
-                    % (t["beta_net_warn"], b.mean(), worst, worst_month))]
+                    % (t["beta_net_warn"], b.mean(), worst, worst_month), rule=False)]
 
 
 def check_holdings(holdings, panel=None):
