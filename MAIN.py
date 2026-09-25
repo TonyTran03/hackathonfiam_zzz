@@ -22,6 +22,18 @@ STAGES = (
 )
 CHECKS = "run_checks.py"
 
+# Reporting runs in the same chain as the model. Keeping them separate is how
+# 05_submission/ ended up holding holdings.csv from one configuration and the
+# figures and deck_pack.csv from a run four days older -- a deck built from
+# that mix would have had charts that did not match its own numbers. Anything
+# whose inputs are missing is skipped rather than failing the chain.
+REPORTS = (
+    "04_backtest_scoring/08_charts.py",
+    "04_backtest_scoring/11_deck_pack.py",
+    "04_backtest_scoring/06_robustness.py",
+    "04_backtest_scoring/10_daily_risk.py",
+)
+
 
 def run(script):
     print("\n" + "=" * 70)
@@ -56,6 +68,16 @@ def main(argv):
         return code
 
     print("\nAll stages finished and the compliance check passed.")
+
+    print("\n" + "=" * 70)
+    print("REGENERATING THE SUBMISSION EXHIBITS")
+    print("=" * 70, flush=True)
+    for script in REPORTS:
+        if not (ROOT / script).exists():
+            print("  skip %s (not present)" % script)
+            continue
+        if run(script) != 0:
+            print("  %s did not finish; its outputs may be stale" % script)
     return 0
 
 

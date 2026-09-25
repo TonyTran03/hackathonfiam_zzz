@@ -1,43 +1,48 @@
 section,metric,value,note
-returns,average monthly return,+1.526%,
-returns,"annualised, arithmetic",+18.31%,
-returns,"annualised, geometric (CAGR)",+18.99%,
-returns,cumulative over the period,+167.88%,
+returns,average monthly return,+1.553%,
+returns,"annualised, arithmetic",+18.64%,
+returns,"annualised, geometric (CAGR)",+19.32%,
+returns,cumulative over the period,+172.03%,
 returns,benchmark cumulative (cash+4%),+50.87%,
 returns,S&P 500 cumulative (price only),+104.63%,
-returns,best month,+12.31%,2022-06
-returns,worst month,-5.90%,2026-05
-returns,hit rate (months beating the hurdle),57.4%,
-returns,"long leg, average month",+1.029%,
-returns,"short leg, average month",+0.224%,
-calendar,2021, +12.95% /  +4.12% /  +26.89%,12 months
-calendar,2022, +38.43% /  +6.19% /  -19.44%,12 months
-calendar,2023, +10.01% /  +9.45% /  +24.23%,12 months
-calendar,2024,  +8.35% /  +9.34% /  +23.31%,12 months
-calendar,2025, +19.36% /  +8.37% /  +16.39%,12 months
-calendar,2026, +20.43% /  +5.21% /  +12.28%,8 months
+returns,best month,+10.89%,2022-01
+returns,worst month,-7.46%,2026-05
+returns,hit rate (months beating the hurdle),61.8%,
+returns,"long leg, average month",+1.269%,
+returns,"short leg, average month",+0.011%,
+calendar,2021, +14.61% /  +4.12% /  +26.89%,12 months
+calendar,2022, +44.71% /  +6.19% /  -19.44%,12 months
+calendar,2023, +14.90% /  +9.45% /  +24.23%,12 months
+calendar,2024, +11.15% /  +9.34% /  +23.31%,12 months
+calendar,2025, +13.70% /  +8.37% /  +16.39%,12 months
+calendar,2026, +12.95% /  +5.21% /  +12.28%,8 months
 risk,INFORMATION RATIO vs cash+4%,+0.85,"annualised, the headline"
-risk,Sharpe ratio over cash,+1.16,annualised
-risk,"alpha vs S&P 500, annualised",+16.85%,t=+3.13
-risk,BETA vs S&P 500,-0.172,se=0.118 -- the neutrality evidence
-risk,correlation with the S&P 500,-0.21,
-risk,maximum drawdown (monthly marks),-5.90%,
+risk,Sharpe ratio over cash,+1.15,annualised
+risk,"alpha vs S&P 500, annualised",+16.64%,t=+3.08
+risk,BETA vs S&P 500,-0.121,se=0.125 -- the neutrality evidence
+risk,correlation with the S&P 500,-0.14,
+risk,maximum drawdown (monthly marks),-7.46%,
 risk,maximum drawdown (daily marks),-9.53%,82.3% of book covered -- optimistic
 risk,worst single day,-4.22%,same coverage caveat
 exposure,average holdings,200,100 long / 100 short
 exposure,average gross exposure,200.0%,range 200.0%-200.0%
-exposure,average net exposure,+7.6%,range -23.8% to +26.2%
+exposure,average net exposure,+13.0%,range -22.2% to +30.0%
 exposure,average single position,1.000%,
 exposure,maximum single position,2.23%,
-exposure,share of book in the top 10 names,9.8%,
-exposure,average monthly turnover,25.0%,range 17%-39%
-exposure,notional traded per month,100% of capital,
-short_book,"median market cap, short leg",$3276m,long leg $2488m
-short_book,"median daily dollar volume, short leg",$1005.5m,long leg $607.0m
-short_book,"median price, short leg",$26.57,
-short_book,share of short leg in small caps or below,53.1%,nano/micro excluded by screen
-costs,IR at 0 bps per trade,+0.85,annualised +18.99%
-costs,IR at 10 bps per trade,+0.76,annualised +17.61%
-costs,IR at 20 bps per trade,+0.67,annualised +16.25%
-costs,IR at 30 bps per trade,+0.58,annualised +14.90%
-costs,IR at 50 bps per trade,+0.40,annualised +12.25%
+exposure,share of book in the top 10 names,9.7%,
+exposure,average monthly turnover,24.6%,range 15%-41%
+exposure,notional traded per month,99% of capital,
+short_book,"median market cap, short leg",$3660m,long leg $2540m
+short_book,"median daily dollar volume, short leg",$1175.9m,long leg $546.0m
+short_book,"median price, short leg",$28.91,
+short_book,share of short leg in small caps or below,48.9%,nano/micro excluded by screen
+costs,IR at 0 bps per trade,+0.85,annualised +19.32%
+costs,IR at 10 bps per trade,+0.76,annualised +17.95%
+costs,IR at 20 bps per trade,+0.68,annualised +16.60%
+costs,IR at 30 bps per trade,+0.59,annualised +15.27%
+costs,IR at 50 bps per trade,+0.41,annualised +12.64%
+delisting,"IR at 20bps, marked 0% (current base case)",+0.68,
+delisting,"IR at 20bps, marked -30% (Shumway)",+0.50,
+delisting,"IR at 20bps, marked -50%",+0.38,
+delisting,"IR at 20bps, marked -100% (stress bound)",+0.09,
+delisting,positions affected,"59 of 13,600",0.74% by weight

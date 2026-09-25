@@ -25,6 +25,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from common import config as C
 
 HOLDINGS = C.PROCESSED_DIR / "holdings.parquet"
+OUT_CSV = C.ROOT / "05_submission" / "robustness.csv"
+
+# Collected as we go so the deck reads these rather than having them typed in.
+_rows = []
+
+
 RETURNS = C.ROOT / "05_submission" / "portfolio_returns.csv"
 PREMIUM_M = C.COMPETITION["benchmark_premium_annual"] / 12
 
@@ -34,6 +40,10 @@ REGIMES = [
     ("2023-25 concentration", "2023-01", "2025-12"),
     ("2026 so far",         "2026-01", "2026-08"),
 ]
+
+
+def rec(section, metric, value, note=""):
+    _rows.append({"section": section, "metric": metric, "value": value, "note": note})
 
 
 def ir(active):
@@ -58,12 +68,15 @@ def subperiods(m):
         hur = (1 + d["hurdle"]).prod() - 1
         print("  %-24s %7d %+8.1f%% %+9.1f%% %+8.2f"
               % (label, len(d), 100 * cum, 100 * (cum - hur), ir(d["active"])))
+        rec("subperiod", label, "%+.2f" % ir(d["active"]),
+            "%d months, %+.1f%% vs hurdle" % (len(d), 100 * (cum - hur)))
     half = len(m) // 2
     for label, d in [("first half", m.iloc[:half]), ("second half", m.iloc[half:])]:
         print("  %-24s %7d %+8.1f%% %+9.1f%% %+8.2f"
               % (label, len(d), 100 * ((1 + d["total"]).prod() - 1),
                  100 * ((1 + d["total"]).prod() - (1 + d["hurdle"]).prod()),
                  ir(d["active"])))
+        rec("subperiod", label, "%+.2f" % ir(d["active"]), "%d months" % len(d))
 
 
 def costs(m, h):
@@ -90,15 +103,18 @@ def costs(m, h):
             hi = mid
     print("  break-even cost: %.0f bps per trade -- above this the strategy "
           "stops clearing the hurdle" % lo)
+    rec("costs", "break-even cost", "%.0f bps" % lo, "per trade")
 
 
 def drop_the_best(m, h):
     print("\n=== 3. DROP THE BEST -- is it a strategy or a lottery ticket? ===")
     base = ir(m["active"])
     print("  all months                          IR %+.2f" % base)
+    rec("stress", "all months", "%+.2f" % base)
     for k in [1, 3, 5]:
         d = m.drop(m["active"].nlargest(k).index)
         print("  minus the %d best months            IR %+.2f" % (k, ir(d["active"])))
+        rec("stress", "minus the %d best months" % k, "%+.2f" % ir(d["active"]))
 
     hh = h.copy()
     hh["pnl"] = hh["weight"] * hh[C.TARGET].fillna(0.0)
@@ -110,6 +126,7 @@ def drop_the_best(m, h):
         d = m.set_index("target_month")
         act = (d["cash_monthly"] + spread - d["hurdle"]).dropna()
         print("  minus the %2d best stocks           IR %+.2f" % (k, ir(act)))
+        rec("stress", "minus the %d best stocks" % k, "%+.2f" % ir(act))
     top = hh.groupby(["permno", "ticker"])["pnl"].sum().nlargest(5)
     print("  biggest contributors: %s"
           % ", ".join("%s %+.1f%%" % (t if isinstance(t, str) else p, 100 * v)
@@ -136,6 +153,8 @@ def factor_attribution(m):
         r = smf.ols(formula, data=d).fit(cov_type="HAC", cov_kwds={"maxlags": 3}, use_t=True)
         print("  %-22s annualised alpha %+6.2f%%  t=%+.2f   R2 %.2f"
               % (label, 100 * 12 * r.params["Intercept"], r.tvalues["Intercept"], r.rsquared))
+        rec("attribution", label, "%+.2f%%" % (100 * 12 * r.params["Intercept"]),
+            "t=%+.2f, R2 %.2f" % (r.tvalues["Intercept"], r.rsquared))
         loads = "  ".join("%s %+.2f (t %+.1f)" % (k, r.params[k], r.tvalues[k])
                           for k in r.params.index if k != "Intercept")
         print("      %s" % loads)
@@ -154,6 +173,9 @@ def rolling(m):
     print("  rolling 12-month beta   mean %+.2f   range %+.2f .. %+.2f   "
           "outside +/-0.3 in %.0f%% of windows"
           % (betas.mean(), betas.min(), betas.max(), 100 * (betas.abs() > 0.3).mean()))
+    rec("rolling", "12-month beta", "%+.2f" % betas.mean(),
+        "range %+.2f..%+.2f, outside +/-0.3 in %.0f%% of windows"
+        % (betas.min(), betas.max(), 100 * (betas.abs() > 0.3).mean()))
     print("  rolling 12-month IR     mean %+.2f   range %+.2f .. %+.2f   "
           "negative in %.0f%% of windows"
           % (irs.mean(), irs.min(), irs.max(), 100 * (irs < 0).mean()))
@@ -187,6 +209,9 @@ def main():
     factor_attribution(m)
     rolling(m)
     short_book(h)
+    pd.DataFrame(_rows).to_csv(OUT_CSV, index=False)
+    print("")
+    print("wrote %s" % OUT_CSV.relative_to(C.ROOT))
     return 0
 
 

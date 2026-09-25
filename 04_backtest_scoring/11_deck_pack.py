@@ -154,6 +154,27 @@ def main():
             "%+.2f" % (np.sqrt(12) * act.mean() / act.std(ddof=1)),
             "annualised %+.2f%%" % (100 * (((1 + pd.Series(net)).prod()) ** (1 / yrs) - 1)))
 
+    print("")
+    print("DELISTING MARK SENSITIVITY")
+    print("  Positions whose next-month return is unavailable are currently")
+    print("  marked at zero. Shumway's convention for missing delisting returns")
+    print("  is -30%; the rest is a stress range.")
+    hh = h.copy()
+    for mark, label in [(0.0, "0% (current base case)"), (-0.30, "-30% (Shumway)"),
+                        (-0.50, "-50%"), (-1.00, "-100% (stress bound)")]:
+        hh["p"] = hh["weight"] * hh[C.TARGET].fillna(mark)
+        spread = hh.groupby("target_month")["p"].sum()
+        mm = m.set_index("target_month")
+        tot = mm["cash_monthly"] + spread
+        net = tot - pd.Series(notional, index=m["target_month"]) * 20 / 10000
+        act = net - mm["hurdle"]
+        put("delisting", "IR at 20bps, marked %s" % label,
+            "%+.2f" % (np.sqrt(12) * act.mean() / act.std(ddof=1)))
+    miss = int(h[C.TARGET].isna().sum())
+    put("delisting", "positions affected", "%d of %s" % (miss, format(len(h), ",")),
+        "%.2f%% by weight" % (100 * h.loc[h[C.TARGET].isna(), "weight"].abs().sum()
+                              / h["weight"].abs().sum()))
+
     pd.DataFrame(rows).to_csv(OUT, index=False)
     print("\nwrote %s" % OUT.relative_to(C.ROOT))
     return 0

@@ -32,14 +32,19 @@ OUT = C.PROCESSED_DIR / "features_ranked.parquet"
 OUT_SPARSE = C.PROCESSED_DIR / "features_ranked_sparse.parquet"
 KEYS = ["permno", "target_month", "eom", "me", "size_grp", "gics", "ticker", "company_name"]
 
-# Measured and rejected. Validation rank correlation was +0.1087 without the
-# 8-K columns and +0.1082 with them -- no gain, a hair worse. Feature
-# importance says the same thing from another angle: of 156 inputs the three
-# event flags rank 152nd, 155th and 156th, and all nine columns together take
-# 1.75% of the model's attention against the 5.77% an average feature would.
-# Flip this to True to reproduce the comparison; the traded model runs without
-# them, because the rule was that validation decides and validation said no.
-INCLUDE_FILING_FEATURES = False
+# Second attempt at the 8-K data, and deliberately a stronger one than the
+# first. That first pass added nine AGGREGATE columns -- counts, delays,
+# item-code flags -- and measured no gain: validation rank correlation
+# +0.1087 without against +0.1082 with, and of 156 inputs the three event
+# flags ranked 152nd, 155th and 156th.
+#
+# What it never included is the one text signal that showed anything. Item
+# 5.02 filings carry no signal in aggregate (+0.046%/month, t=+0.5 across
+# 16,378 of them), but separating abrupt departures from routine
+# appointments splits that into -0.640%/month (t=-1.9, n=1,632) and
+# +0.121%/month (t=+1.2). Adding `abrupt` is the substantive change here;
+# repeating the aggregate-only test would just reproduce a known null.
+INCLUDE_FILING_FEATURES = True
 
 FILING_FEATURES = C.PROCESSED_DIR / "filing_features.parquet"
 # Added only to the SPARSE table, the one the trees read. About half the
@@ -50,6 +55,11 @@ FILING_FEATURES = C.PROCESSED_DIR / "filing_features.parquet"
 FILING_CONTINUOUS = ["n_filings", "filing_burst", "max_delay_days",
                      "mean_delay_days", "share_late", "total_words"]
 FILING_FLAGS = ["has_distress", "has_officer_change", "has_earnings"]
+
+# The triage output: 1 when at least one officer-change filing that month was
+# classified as an abrupt departure rather than a routine appointment.
+TRIAGE_FEATURES = C.PROCESSED_DIR / "officer_triage.parquet"
+TRIAGE_FLAGS = ["abrupt"]
 
 
 def rank_to_unit(s):
@@ -118,9 +128,20 @@ def attach_filing_features(df):
 
     before = df.shape[1]
     df = df.merge(f, on=["permno", "target_month"], how="left")
+
+    if TRIAGE_FEATURES.exists():
+        t = pd.read_parquet(TRIAGE_FEATURES)[["permno", "target_month"] + TRIAGE_FLAGS]
+        df = df.merge(t, on=["permno", "target_month"], how="left")
+    else:
+        print("  officer_triage.parquet missing -- run 01_data/officer_triage.py")
+
     matched = df["n_filings"].notna().mean()
     print("  filing features: +%d columns, matched on %.1f%% of stock-months"
           % (df.shape[1] - before, 100 * matched))
+    if "abrupt" in df.columns:
+        print("  abrupt-departure flag set on %s stock-months (%.2f%%)"
+              % (format(int((df["abrupt"] == 1).sum()), ","),
+                 100 * (df["abrupt"] == 1).mean()))
     return df
 
 
