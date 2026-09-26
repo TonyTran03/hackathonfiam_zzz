@@ -16,3 +16,10 @@ stress,minus the 20 best stocks,+0.46,
 attribution,market only,+18.11%,"t=+3.34, R2 0.03"
 attribution,market + size + value,+13.07%,"t=+2.25, R2 0.16"
 rolling,12-month beta,-0.05,"range -0.39..+0.44, outside +/-0.3 in 12% of windows"
+rolling,window precision,2.2x looser,12-month se 0.27 vs 0.12 full-period
+rolling,breaches vs noise floor,12% observed vs 30% expected,expected from estimation noise alone at our full-period beta
+rolling,breaching windows,7 of 57,3 distinct episodes once overlap is collapsed
+rolling,breach episode 1,2021-01..2022-07,"beta -0.39..+0.44 over 5 window(s), max |t| 1.8"
+rolling,breach episode 2,2024-03..2025-02,"beta +0.31..+0.31 over 1 window(s), max |t| 1.1"
+rolling,breach episode 3,2025-09..2026-08,"beta -0.34..-0.34 over 1 window(s), max |t| 0.9"
+rolling,largest breach t-stat,1.8,no breaching window is distinguishable from zero beta
