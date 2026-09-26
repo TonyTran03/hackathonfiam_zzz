@@ -392,10 +392,29 @@ function fig(s, name, x, y, w, h) {
   stat(s, 6.96, 1.66, 3.0, "Alpha vs S&P 500", M("alpha vs S&P 500"), note("alpha vs S&P 500"));
   stat(s, 10.14, 1.66, 2.56, "Beta", M("BETA vs S&P"), "se " + note("BETA vs S&P").replace("se=", "").replace(" -- the neutrality evidence", ""));
 
-  fig(s, "rolling_beta", 0.6, 3.45, 6.3, 2.5);
-  caption(s, 0.6, 6.0, 6.3,
-    "Full-period beta is " + M("BETA vs S&P") + ". The 12-month window leaves the "
-    + "+/-0.3 band around 2022 - we report that rather than only the average.");
+  fig(s, "rolling_beta", 0.6, 3.45, 6.3, 2.2);
+  // The judges read this chart before anything else, so the windows outside the
+  // band are named here rather than left for them to find. Every figure in this
+  // block comes from robustness.csv.
+  const episodes = robust.filter(r => r.metric.startsWith("breach episode"))
+                         .map(r => r.value).join(", ");
+  const obs = R("breaches vs noise floor").split(" vs ")[0].replace(" observed", "");
+  const exp = R("breaches vs noise floor").split(" vs ")[1].replace(" expected", "");
+  s.addText([
+    { text: "Outside +/-0.3: " + R("breaching windows") + " windows, which is "
+           + Rnote("breaching windows").replace(" once overlap is collapsed", "")
+           + " once the overlap between 12-month windows is collapsed - "
+           + episodes + ".",
+      options: { breakLine: true, bold: true, color: INK } },
+    { text: "None of them is distinguishable from zero (largest |t| "
+           + R("largest breach t-stat") + "). A 12-month window measures beta "
+           + R("window precision") + " than the full period, so a book with our "
+           + "full-period beta would leave the band in " + exp + " of windows on "
+           + "sampling noise alone. We leave it in " + obs + "." },
+  ], {
+    x: 0.6, y: 5.72, w: 6.3, h: 1.05, isTextBox: true, margin: 0, valign: "top",
+    fontFace: BODY, fontSize: 9.5, color: GREY, lineSpacingMultiple: 1.02,
+  });
 
   s.addText("Cost sensitivity", { x: 7.3, y: 3.45, w: 5.4, h: 0.28, isTextBox: true,
     margin: 0, fontFace: BODY, fontSize: 13, bold: true, color: NAVY });
