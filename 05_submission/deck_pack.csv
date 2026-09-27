@@ -21,20 +21,7 @@ risk,Sharpe ratio over cash,+1.19,annualised
 risk,"alpha vs S&P 500, annualised",+17.29%,t=+3.22
 risk,BETA vs S&P 500,-0.159,se=0.120 -- the neutrality evidence
 risk,correlation with the S&P 500,-0.19,
-model,"OOS R2, ols",-0.0602%,
-model,"OOS R2, lasso",-0.0360%,
-model,"OOS R2, ridge",+0.0278%,"1-2% is typical; any positive number is predictability <- in the traded blend, 2022,2023"
-model,"OOS R2, en",-0.0335%,
-model,"OOS R2, gbm",+0.3638%,"1-2% is typical; any positive number is predictability <- in the traded blend, 2021,2022,2023,2024,2025,2026"
-model,"OOS R2, avg_linear",+0.0026%,
-model,"OOS R2, avg",n/a,"within-month ranking score, not in return units <- in the traded blend, all"
-model,"rank IC, ols",+0.0761,positive in 75% of months
-model,"rank IC, lasso",+0.0837,positive in 50% of months
-model,"rank IC, ridge",+0.1193,positive in 78% of months
-model,"rank IC, en",+0.0784,positive in 49% of months
-model,"rank IC, gbm",+0.1342,positive in 85% of months
-model,"rank IC, avg_linear",+0.0994,positive in 78% of months
-model,"rank IC, avg",+0.1419,positive in 82% of months
+model,out-of-sample R2,NOT AVAILABLE,re-run 02_prediction/03_train_predict.py to write prediction_metrics.csv
 risk,maximum drawdown (monthly marks),-6.53%,
 risk,maximum drawdown (daily marks),-11.93%,84.0% of book covered by weight (worst 64.4%) -- optimistic
 risk,worst single day,-4.41%,same coverage caveat
@@ -62,3 +49,8 @@ costs,IR at 10 bps per trade,+0.79,annualised +18.29%
 costs,IR at 20 bps per trade,+0.71,annualised +16.93%
 costs,IR at 30 bps per trade,+0.62,annualised +15.60%
 costs,IR at 50 bps per trade,+0.44,annualised +12.96%
+delisting,"IR at 20bps, marked 0% (current base case)",+0.71,
+delisting,"IR at 20bps, marked -30% (Shumway)",+0.54,
+delisting,"IR at 20bps, marked -50%",+0.43,
+delisting,"IR at 20bps, marked -100% (stress bound)",+0.15,
+delisting,positions affected,"50 of 13,600",0.64% by weight

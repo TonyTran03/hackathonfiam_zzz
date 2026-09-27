@@ -1,0 +1,23 @@
+test,window,variant,IR,vs_baseline
+quota rule,validation,B: share of names,-1.1458101809525316,-0.6896136026482746
+quota rule,validation,B: equal seats,-1.3894196236651228,-0.9332230453608659
+quota rule,validation,B: share of market value,-0.8095205165764741,-0.3533239382722171
+quota rule,evaluation,B: share of names,0.826505050692932,-0.024909278755630093
+quota rule,evaluation,B: equal seats,0.5542196201365622,-0.29719470931199987
+quota rule,evaluation,B: share of market value,1.0030066765966772,0.1515923471481151
+turnover setting,validation,smooth 1 buffer 1.6,-1.021535083018974,-0.021059024308333507
+turnover setting,validation,smooth 1 buffer 2.5,-0.8574459927415761,-0.17429077952610605
+turnover setting,validation,smooth 3 buffer 1.6,-0.8916380946471921,0.21255406955011502
+turnover setting,validation,smooth 3 buffer 2.5,-1.1458101809525316,-0.6896136026482746
+turnover setting,validation,smooth 6 buffer 1.6,-0.7961450852879274,0.2514873518762567
+turnover setting,validation,smooth 6 buffer 2.5,-0.6979186466405339,0.4504216456541995
+turnover setting,evaluation,smooth 1 buffer 1.6,0.8608646941183329,-0.0806608281447796
+turnover setting,evaluation,smooth 1 buffer 2.5,0.9422822655013547,-0.007080722439232412
+turnover setting,evaluation,smooth 3 buffer 1.6,1.068748443785911,0.08252724525088762
+turnover setting,evaluation,smooth 3 buffer 2.5,0.826505050692932,-0.024909278755630093
+turnover setting,evaluation,smooth 6 buffer 1.6,0.9838587752663499,0.1066817859012813
+turnover setting,evaluation,smooth 6 buffer 2.5,1.0304889715675254,0.12403875907979767
+timing,validation,B minus baseline,,-0.07623296139843488
+timing,evaluation,B minus baseline,,-0.009718060820702621
+sub-window,2019,B,-1.4029285763273678,0.44373096139715185
+sub-window,2020,B,-1.0267982424304347,-1.4059743531982525

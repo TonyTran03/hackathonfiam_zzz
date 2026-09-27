@@ -1,0 +1,25 @@
+section,metric,value,note
+subperiod,2021 rebound,+0.72,"12 months, +8.8% vs hurdle"
+subperiod,2022 drawdown,+1.58,"12 months, +32.3% vs hurdle"
+subperiod,2023-25 concentration,+0.46,"36 months, +17.6% vs hurdle"
+subperiod,2026 so far,+1.23,"8 months, +14.8% vs hurdle"
+subperiod,first half,+1.12,34 months
+subperiod,second half,+0.62,34 months
+costs,break-even cost,100 bps,per trade
+stress,all months,+0.88,
+stress,minus the 1 best months,+0.79,
+stress,minus the 3 best months,+0.59,
+stress,minus the 5 best months,+0.36,
+stress,minus the 5 best stocks,+0.76,
+stress,minus the 10 best stocks,+0.67,
+stress,minus the 20 best stocks,+0.50,
+attribution,market only,+18.30%,"t=+3.37, R2 0.05"
+attribution,market + size + value,+13.78%,"t=+2.47, R2 0.15"
+rolling,12-month beta,-0.08,"range -0.63..+0.34, outside +/-0.3 in 18% of windows"
+rolling,window precision,2.0x looser,12-month se 0.24 vs 0.12 full-period
+rolling,breaches vs noise floor,18% observed vs 32% expected,expected from estimation noise alone at our full-period beta
+rolling,breaching windows,10 of 57,3 distinct episodes once overlap is collapsed
+rolling,breach episode 1,2021-01..2022-07,"beta -0.41..+0.34 over 5 window(s), max |t| 1.9"
+rolling,breach episode 2,2024-03..2025-02,"beta +0.34..+0.34 over 1 window(s), max |t| 1.5"
+rolling,breach episode 3,2025-06..2026-08,"beta -0.63..-0.38 over 4 window(s), max |t| 1.9"
+rolling,largest breach t-stat,1.9,no breaching window is distinguishable from zero beta

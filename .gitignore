@@ -12,6 +12,11 @@ __pycache__/
 venv/
 .ipynb_checkpoints/
 
+# deck QA renders
+05_submission/qa/
+node_modules/
+package-lock.json
+
 # Model-comparison experiment: generated files
 experiments/model_comparison/cache/
 experiments/model_comparison/01_data/processed/
