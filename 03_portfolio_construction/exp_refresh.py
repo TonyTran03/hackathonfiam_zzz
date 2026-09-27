@@ -156,12 +156,19 @@ def score(book):
     traded = piv.diff().abs().sum(axis=1)
     traded.iloc[0] = piv.abs().sum(axis=1).iloc[0]
     act = sp.values - bp.PREMIUM_M
+    # Net of costs. The refresh arms trade half again as much as the baseline,
+    # and an information ratio quoted gross rewards exactly that. Whatever
+    # survives here is the only part worth reporting.
+    net = {}
+    for bps in (10, 20, 30):
+        a = sp.values - traded.values * bps / 10000 - bp.PREMIUM_M
+        net["IR_%dbps" % bps] = np.sqrt(12) * a.mean() / a.std(ddof=1)
     nsec = (b.assign(sec=sector_of(b["gics"]))
              .groupby(["target_month", "sec"])["weight"].sum()
              .abs().groupby("target_month").sum().mean())
     # how far down the ranking does the book reach?
     rank = b.groupby("target_month")["score"].rank(ascending=False, pct=True)
-    return {"IR": np.sqrt(12) * act.mean() / act.std(ddof=1),
+    return {"IR": np.sqrt(12) * act.mean() / act.std(ddof=1), **net,
             "spread": 100 * 12 * sp.mean(),
             "vol": 100 * np.sqrt(12) * sp.std(ddof=1),
             "turnover": 100 * (traded / (2 * piv.abs().sum(axis=1))).mean(),
@@ -192,8 +199,9 @@ def main():
         print("\n" + "=" * 86)
         print("%s  -- does the gain need the sector rule?" % wname.upper())
         print("=" * 86)
-        print("  %-30s %8s %9s %8s %10s %11s"
-              % ("arm", "IR", "spread", "vol", "turnover", "net-sector"))
+        print("  %-30s %8s %8s %8s %8s %9s %10s"
+              % ("arm", "IR gross", "@10bps", "@20bps", "@30bps", "turnover",
+                 "net-sector"))
         arms = [("baseline (buffer 2.5)", dict(buf=2.5)),
                 ("buffer 2.0, nothing else", dict(buf=2.0)),
                 ("buffer 1.6, nothing else", dict(buf=1.6)),
@@ -204,9 +212,9 @@ def main():
         for label, kw in arms:
             buf = kw.pop("buf")
             s = score(make_book(W, bp.SMOOTH_MONTHS, buf, market, **kw))
-            print("  %-30s %+8.2f %+8.2f%% %7.2f%% %9.1f%% %10.1f%%"
-                  % (label, s["IR"], s["spread"], s["vol"], s["turnover"],
-                     s["net_sector"]))
+            print("  %-30s %+8.2f %+8.2f %+8.2f %+8.2f %8.1f%% %9.1f%%"
+                  % (label, s["IR"], s["IR_10bps"], s["IR_20bps"], s["IR_30bps"],
+                     s["turnover"], s["net_sector"]))
             rows.append({"window": wname, "arm": label, **s})
 
     pd.DataFrame(rows).to_csv(OUT, index=False)
