@@ -1,0 +1,23 @@
+Public domain dedication
+========================
+
+This submission was prepared for the McGill-FIAM Asset Management Hackathon
+2026. The competition rules state that a hackathon submission is public domain
+and free, and that what is evaluated is the idea and the backtest behind it
+rather than any technology claim. This file records that accordingly.
+
+To the extent possible under law, the authors dedicate all copyright and
+related and neighbouring rights in this code, its documentation and the
+accompanying deck to the public domain worldwide. The work is distributed
+without any warranty. Where a public domain dedication is not legally
+effective, any person may use, copy, modify and distribute the work for any
+purpose, commercial or otherwise, without condition.
+
+This dedication covers the code in this repository, the generated submission
+artefacts and the deck. It does not cover the competition's own datasets or
+the third-party market data referenced by the pipeline, which remain subject
+to the terms under which they were supplied and are not redistributed here.
+
+If the organisers prefer a conventional permissive licence instead, the rules
+name Apache-2.0 as an acceptable example; replacing the text above with the
+Apache-2.0 licence text would satisfy the same requirement.
