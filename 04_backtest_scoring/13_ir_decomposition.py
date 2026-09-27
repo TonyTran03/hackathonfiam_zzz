@@ -1,6 +1,6 @@
 """Stage 5h -- when the information ratio moves, did return or risk move it?
 
-    python 04_backtest_scoring/12_ir_decomposition.py BASE.csv NEW.csv
+    python 04_backtest_scoring/13_ir_decomposition.py BASE.csv NEW.csv
 
 The information ratio is a ratio, so any change in it is two changes wearing
 one number: the active return in the numerator and its volatility in the

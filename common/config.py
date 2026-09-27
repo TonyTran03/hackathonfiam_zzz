@@ -73,6 +73,25 @@ COMPETITION = {
     "benchmark_premium_annual": 0.04,
 }
 
+# Our choices, NOT rules. Kept out of COMPETITION so that dict stays a faithful
+# transcription of the PDF and the compliance report can say which findings are
+# rule breaches and which are house standards.
+TEAM = {
+    # The rules set no numeric limit on beta. They do say a dollar-neutral book
+    # that is long high-beta and short low-beta "is not neutral at all, it is a
+    # levered long position wearing a disguise", and that a book whose realised
+    # beta is materially different from zero will be evaluated as directional.
+    # So we pick a number and hold ourselves to it.
+    "beta_net_warn": 0.10,      # ex-ante beta-weighted net exposure in a month
+    "beta_net_fail": 0.30,      # beyond this the mandate is not being run
+
+    # Delisting mark for a held position with no realised return. Stage 5
+    # currently uses 0.0; Shumway (1997) is the usual reference for -0.30.
+    # Exposed so the sensitivity can be run without editing the scorer.
+    "delisting_return": 0.0,
+    "delisting_sensitivity": (0.0, -0.30, -0.50, -1.00),
+}
+
 
 def training_schedule(first_test_year=2021, last_test_year=2026):
     """Expanding training window, rolling two-year validation, one-year test.
