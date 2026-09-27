@@ -514,6 +514,11 @@ function fig(s, name, x, y, w, h) {
         + "as a second source of alpha.",
       "We evaluated the test period 13 times. Nine followed a diagnosed defect; three "
         + "were genuine trials, one of which we removed after it failed.",
+      "The improvement we would make next is sector neutrality: " + Number(
+          readCsv("sector_dose.csv").find(r => r.book === "lambda 0.00").net_sector
+        ).toFixed(0) + "% of capital sits in sector bets nobody chose. We tested it four "
+        + "ways and report it as untested rather than rejected - the appendix explains "
+        + "why our sample cannot resolve an effect that size.",
     ]],
   ];
   cols.forEach((c, i) => {
@@ -685,9 +690,110 @@ appendix("Research log and multiple testing",
       fontFace: BODY, fontSize: 10.5, color: INK, lineSpacingMultiple: 1.02 });
   });
 
+// --------------------------------------------------- APPENDIX 5 ------------
+// A proposed improvement, tested and not adopted. Every figure is read from the
+// experiment CSVs, including the ones that contradict an earlier conclusion of
+// ours -- the reversals are the point of the page, not an embarrassment to trim.
+appendix("A proposed improvement we tested and did not adopt",
+  "Sector neutrality: what the experiments said, and why they cannot settle it", s => {
+
+  const dose = readCsv("sector_dose.csv");
+  const power = readCsv("exp_sector_power.csv").filter(r => r.test === "power");
+  const sweep = readCsv("exp_sector_robustness.csv")
+                  .filter(r => r.test === "quota rule" || r.test === "turnover setting");
+  const refr = readCsv("exp_refresh.csv");
+  const num = v => Number(v);
+  const pw = w => Number(power.find(r => r.window === w).detectable_IR_gap).toFixed(2);
+  const wins = sweep.filter(r => num(r.vs_baseline) > 0).length;
+  const d0 = dose.find(r => r.book === "lambda 0.00");
+  const vS = dose.find(r => r.book === "variant S");
+  const arm = (w, a) => refr.find(r => r.window === w && r.arm.startsWith(a));
+
+  // ---- left: the problem, and neutralisation as a dose ----
+  s.addText("The book carries a sector bet nobody chose", {
+    x: 0.6, y: 1.62, w: 6.1, h: 0.28, isTextBox: true, margin: 0,
+    fontFace: BODY, fontSize: 13, bold: true, color: NAVY });
+  bullets(s, 0.6, 1.98, 6.1, [
+    "Residualising the score on sector dummies removes each sector's mean, not its "
+      + "skew. The traded book averages 8 technology longs against 28 shorts, and "
+      + Number(d0.net_sector).toFixed(1) + "% of capital sits in net sector positions.",
+    "Shrinking those nets toward zero and restoring gross traces the whole curve:",
+  ], 10.5);
+
+  table(s, 0.6, 3.06, 6.1,
+    ["Neutralisation", "Net sector", "Spread", "Vol", "IR"],
+    dose.filter(r => r.book.startsWith("lambda")).map(r => [
+      ({"lambda 0.00": "none (traded book)", "lambda 0.25": "a quarter removed",
+        "lambda 0.50": "half removed", "lambda 0.75": "three quarters",
+        "lambda 1.00": "fully neutral"})[r.book] || r.book,
+      Number(r.net_sector).toFixed(1) + "%",
+      (num(r.spread_ann) >= 0 ? "+" : "") + Number(r.spread_ann).toFixed(2) + "%",
+      Number(r.vol_ann).toFixed(2) + "%",
+      (num(r.IR) >= 0 ? "+" : "") + Number(r.IR).toFixed(2)]),
+    [1.85, 1.15, 1.15, 0.95, 1.0], 9.5);
+
+  caption(s, 0.6, 4.72, 6.1,
+    "Volatility is flat until sector exposure falls below about half of capital, then "
+    + "rises. Variant S sits at " + Number(vS.net_sector).toFixed(1) + "%, where the curve "
+    + "predicts its volatility to within 0.11pp - so its flat vol is not a puzzle. Its "
+    + "return, though, beats the curve by 4.2pp: only about a third of variant S's gain "
+    + "is the sector exposure it removes.");
+
+  // ---- right: what the tests said ----
+  s.addText("Four rounds of testing, three reversals", {
+    x: 7.1, y: 1.62, w: 5.6, h: 0.28, isTextBox: true, margin: 0,
+    fontFace: BODY, fontSize: 13, bold: true, color: NAVY });
+  bullets(s, 7.1, 1.98, 5.6, [
+    "Picking inside sectors loses on the clean 2019-20 window and gains nothing on "
+      + "the test period - until the quota rule, smoothing and buffer are varied, after "
+      + "which it leads in " + wins + " of " + sweep.length + " configurations (binomial "
+      + "p = 0.48). Under a true null the best of " + sweep.length + " reaches ours "
+      + "essentially always.",
+    "A no-sector rule that evicts the weakest names beat the sector cap at one "
+      + "smoothing setting and lost at the other two, net of costs. We withdrew that "
+      + "conclusion too.",
+  ], 10.5);
+
+  table(s, 7.1, 3.62, 5.6,
+    ["Net of 20bps", "Validation", "Test period"],
+    [["Traded book",
+      Number(arm("validation", "baseline").IR_20bps).toFixed(2),
+      "+" + Number(arm("evaluation", "baseline").IR_20bps).toFixed(2)],
+     ["Sector cap 5",
+      Number(arm("validation", "sector cap").IR_20bps).toFixed(2),
+      "+" + Number(arm("evaluation", "sector cap").IR_20bps).toFixed(2)],
+     ["Evict 10/month",
+      Number(arm("validation", "refresh 10").IR_20bps).toFixed(2),
+      "+" + Number(arm("evaluation", "refresh 10").IR_20bps).toFixed(2)]],
+    [2.3, 1.65, 1.65], 10);
+  caption(s, 7.1, 4.72, 5.6,
+    "Every arm beats the traded book on the test period and loses to it on the only "
+    + "window the model never saw. Exploratory arms were run on an earlier build "
+    + "(baseline +0.85); the dose curve and variant S are on the submitted book.");
+
+  // ---- the punchline strip ----
+  s.addShape(pres.ShapeType.roundRect, {
+    x: 0.6, y: 5.52, w: 12.1, h: 1.24, fill: { color: TINT }, line: { color: TINT },
+    rectRadius: 0.05 });
+  s.addText("Why none of it can be acted on", {
+    x: 0.85, y: 5.66, w: 11.6, h: 0.26, isTextBox: true, margin: 0,
+    fontFace: BODY, fontSize: 11.5, bold: true, color: NAVY });
+  s.addText([
+    { text: "A 24-month validation window cannot detect an information-ratio gap below "
+           + pw("validation") + "; the 68-month test period cannot detect one below "
+           + pw("evaluation") + ". Every effect measured here is between +0.2 and +0.4.",
+      options: { breakLine: true, bold: true, color: INK } },
+    { text: "Conclusions that reverse when a smoothing parameter moves are what a "
+           + "sub-resolution effect looks like, and ours reversed three times. We report "
+           + "sector neutrality as untested rather than rejected, and we did not change "
+           + "the book on evidence our own sample cannot resolve." },
+  ], { x: 0.85, y: 5.96, w: 11.6, h: 0.76, isTextBox: true, margin: 0, valign: "top",
+       fontFace: BODY, fontSize: 10.5, color: GREY, lineSpacingMultiple: 1.02 });
+});
+
 // ------------------------------------------------------------- write -------
 const out = path.join(SUB, "FIAM_deck.pptx");
 pres.writeFile({ fileName: out }).then(() => {
   console.log("wrote " + out);
-  console.log("slides: 8 main + 4 appendix");
+  console.log("slides: 8 main + 5 appendix");
 });
