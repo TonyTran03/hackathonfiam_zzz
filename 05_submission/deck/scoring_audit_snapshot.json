@@ -1,0 +1,41 @@
+{
+  "audited_checkout": "46890aae6cf25bfa5e93032621dfdcbbede33edb",
+  "input_sha256": {
+    "05_submission/portfolio_returns.csv": "6fa0218a2eae26113eae913851576cd8153790176761e55efc19b06f04e3ef5f",
+    "05_submission/holdings.csv": "c60852074ceab570b21efd967d5b80f06bcfb0c2f0b696f39d463356808a2100",
+    "05_submission/deck_pack.csv": "ed508ca8d7f1cc6082187f05700acfcc9955e2e5fbee9350502813863c28874b"
+  },
+  "checks": "PASS: dates, uniqueness, finite returns, labels, core exposure limits, cash source, return identities, rounded deck IR",
+  "limits": "Does not verify raw return truth, leakage, borrowability, beta neutrality, or final strategy adoption.",
+  "months": 68,
+  "positions": 13600,
+  "positions_per_month": [
+    200,
+    200
+  ],
+  "gross_range": [
+    1.9999999999999998,
+    2.0000000000000004
+  ],
+  "net_range": [
+    -0.24035100724105538,
+    0.2999999999999997
+  ],
+  "gross_current_accounting": {
+    "ir": 0.8834050267790216,
+    "cagr": 0.19653079645744076,
+    "max_drawdown_from_initial_nav": -0.06526359555361527
+  },
+  "net20_current_deck_approximation": {
+    "ir": 0.706335366965246,
+    "cagr": 0.16934949601029237,
+    "max_drawdown_from_initial_nav": -0.07338625891325568
+  },
+  "net20_same_approximation_including_entry": {
+    "ir": 0.699784269954997,
+    "cagr": 0.1684990524480876,
+    "max_drawdown_from_initial_nav": -0.07338625891325556
+  },
+  "initial_entry_cost_at_20bps": 0.004,
+  "mean_target_weight_turnover_excluding_entry": 0.2462678615077572
+}
