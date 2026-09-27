@@ -18,8 +18,14 @@ MONTHS = list(pd.period_range(C.COMPETITION["oos_start"], C.COMPETITION["oos_end
                               freq="M").astype(str))
 
 
-def clean_holdings(n_long=110, n_short=110, gross=2.0):
-    """A book that obeys every rule: dollar neutral, 220 names, 200% gross."""
+def clean_holdings(n_long=110, n_short=110, gross=2.0, long_beta=1.0, short_beta=1.0):
+    """A book that obeys every rule: dollar neutral, 220 names, 200% gross.
+
+    Both legs carry beta 1.0 by default, so the book is beta neutral as well
+    as dollar neutral and check_beta_neutrality has something to pass on.
+    Override the betas to build the disguised-directional case; the dedicated
+    tests for that live in test_scoring.py.
+    """
     rows = []
     for m in MONTHS:
         longs = np.arange(10000, 10000 + n_long)
@@ -27,10 +33,10 @@ def clean_holdings(n_long=110, n_short=110, gross=2.0):
         wl = gross / 2 / n_long
         ws = gross / 2 / n_short
         for p in longs:
-            rows.append((m, p, wl))
+            rows.append((m, p, wl, long_beta))
         for p in shorts:
-            rows.append((m, p, -ws))
-    return pd.DataFrame(rows, columns=["target_month", "permno", "weight"])
+            rows.append((m, p, -ws, short_beta))
+    return pd.DataFrame(rows, columns=["target_month", "permno", "weight", "beta"])
 
 
 def fake_panel(df):
@@ -150,6 +156,19 @@ def main():
     ghost.loc[ghost.index[0], "permno"] = 999999
     f, _ = checks.check_holdings(ghost, panel=fake_panel(good))
     ok &= expect("FAIL" in levels(f, "untradable positions"), "a stock not in the panel")
+
+    # The rules' own warning: dollar neutral is not the same as neutral. This
+    # book breaks no numeric rule, so every check above passes it.
+    disguised = clean_holdings(long_beta=1.8, short_beta=0.4)
+    f, _ = checks.check_holdings(disguised)
+    ok &= expect("FAIL" in levels(f, "beta neutrality"),
+                 "long high-beta / short low-beta, still dollar neutral")
+    ok &= expect("FAIL" not in levels(f, "net exposure"),
+                 "  ...and no other check catches it")
+
+    f, _ = checks.check_holdings(good.drop(columns="beta"))
+    ok &= expect("WARN" in levels(f, "beta neutrality"),
+                 "a book with no betas warns rather than silently passing")
 
     print("\n" + ("ALL CHECKS BEHAVED AS EXPECTED" if ok else "SOME CHECKS FAILED TO FIRE"))
     return 0 if ok else 1

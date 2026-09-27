@@ -10,7 +10,7 @@ Work through one box at a time: data → prediction → portfolio → scoring �
 | `02_prediction/` | Train models and produce one predicted next-month excess return per stock, then rank stocks. Contains the supplied penalized-linear starter script. |
 | `03_portfolio_construction/` | Convert rankings into monthly signed portfolio weights. Save working holdings here. |
 | `04_backtest_scoring/` | Evaluate monthly returns, constraints, and risk. Contains the supplied portfolio-analysis starter script. |
-| `05_submission/` | Keep final deliverables here: 8-page deck plus appendix, holdings CSV, portfolio-return CSV, `MAIN.py`, and team CVs. |
+| `05_submission/` | Keep final deliverables here: 8-page deck plus appendix, holdings CSV, portfolio-return CSV, `MAIN.py`, and team CVs. `deck/` holds the deck outline and the appendix drafts (research log, 8-K write-up, missing-returns note, pre-registered variants). |
 | `common/` | Shared across every box: `config.py` (paths, the trading limits, the train/validation/test schedule) and `checks.py` (rule-compliance checks). Folder names starting with a digit cannot be imported in Python, so anything used by more than one stage lives here. |
 | `tests/` | `test_checks.py` feeds the checker 21 deliberately broken inputs and asserts each one is caught. |
 
@@ -83,7 +83,28 @@ python MAIN.py
 Stage 1 is implemented; the other four still need writing. Until they exist, `MAIN.py` lists the missing files and exits without running anything. The existing starter scripts are references, not connected pipeline stages. Package the final submission version with its required dependencies as allowed by the rules; moving `MAIN.py` alone would break its relative stage paths.
 
 After all five stages succeed, `MAIN.py` runs the compliance checks as a final
-gate and fails the chain if any rule is broken. Use `--no-check` to skip it.
+gate and fails the chain if any competition rule is broken. Use `--no-check`
+to skip it. House standards from `config.TEAM` (the beta-neutrality
+thresholds) are printed at the same severity but do not stop the chain: the
+beta control deliberately carries an ex-ante beta tilt to offset the realised
+gap between estimated and actual leg betas, so a book can sit past that
+threshold by design. Whether that is acceptable is a team judgement for the
+deck.
+
+Two switches exist for work after the chain has run:
+
+```powershell
+python 02_prediction/03_train_predict.py --metrics-only      # rewrite prediction_metrics.csv from saved forecasts, no retraining
+python 03_portfolio_construction/04_build_portfolio.py --variant S   # one pre-registered variant (S: sector cap, B: 12-month beta feedback)
+```
+
+The variant switches are OFF by default and MAIN.py never passes them. Their
+rules, acceptance criteria and results are in
+`05_submission/deck/protocol_variants.md`.
+
+The delisting mark for held positions with no realised return is
+`config.TEAM["delisting_return"]` (0.0). Stage 5 applies it and
+`11_deck_pack.py` reports the sensitivity grid next to it.
 
 ### Stage 1 — `01_data/01_load_data.py`
 

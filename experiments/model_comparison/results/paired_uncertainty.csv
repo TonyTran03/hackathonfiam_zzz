@@ -1,0 +1,5 @@
+model_a,model_b,annualized_arithmetic_mean_difference,ci_low,ci_high,method
+gbm_missing,ridge,-0.10624301744369197,-0.19594727243616175,-0.024778754606554716,paired circular 6-month block bootstrap; 2000 draws; 68 months
+gbm_missing,gbm_median,0.10406859782660763,-0.03518643211896886,0.2660157965401111,paired circular 6-month block bootstrap; 2000 draws; 68 months
+gbm_missing,gbm_median_matched,0.03187102949748126,-0.06488884379166172,0.13463907628667177,paired circular 6-month block bootstrap; 2000 draws; 68 months
+annual_blend,ridge,-0.07931946455678963,-0.16411344426698093,0.0007304422632047326,paired circular 6-month block bootstrap; 2000 draws; 68 months

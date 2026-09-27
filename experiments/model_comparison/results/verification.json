@@ -1,0 +1,113 @@
+{
+  "source_rf_range_max": 3.552713678800501e-15,
+  "forward_pairs_checked": 522431,
+  "max_forward_difference": 0.0,
+  "portfolio_checks": [
+    {
+      "model": "ols",
+      "months": 68,
+      "min_positions": 200,
+      "max_positions": 200,
+      "max_gross": 2.0000000000000004,
+      "min_net": -0.21552556948789126,
+      "max_net": 0.15121963995200682,
+      "no_duplicate_positions": true,
+      "both_legs_every_month": true,
+      "missing_return_positions": 61,
+      "adverse_missing_cagr": -0.1292923688159917
+    },
+    {
+      "model": "ridge",
+      "months": 68,
+      "min_positions": 200,
+      "max_positions": 200,
+      "max_gross": 2.0000000000000004,
+      "min_net": -0.30000000000000004,
+      "max_net": 0.17193451441199747,
+      "no_duplicate_positions": true,
+      "both_legs_every_month": true,
+      "missing_return_positions": 54,
+      "adverse_missing_cagr": -0.010999440604087307
+    },
+    {
+      "model": "lasso",
+      "months": 68,
+      "min_positions": 200,
+      "max_positions": 200,
+      "max_gross": 2.0000000000000004,
+      "min_net": -0.25027848133426844,
+      "max_net": 0.14786187388895644,
+      "no_duplicate_positions": true,
+      "both_legs_every_month": true,
+      "missing_return_positions": 56,
+      "adverse_missing_cagr": -0.12556148761828612
+    },
+    {
+      "model": "en",
+      "months": 68,
+      "min_positions": 200,
+      "max_positions": 200,
+      "max_gross": 2.0000000000000004,
+      "min_net": -0.23661087523285307,
+      "max_net": 0.14786187388895644,
+      "no_duplicate_positions": true,
+      "both_legs_every_month": true,
+      "missing_return_positions": 51,
+      "adverse_missing_cagr": -0.10980282821163012
+    },
+    {
+      "model": "gbm_missing",
+      "months": 68,
+      "min_positions": 200,
+      "max_positions": 200,
+      "max_gross": 2.0000000000000004,
+      "min_net": -0.28511593578057437,
+      "max_net": 0.22364074961985136,
+      "no_duplicate_positions": true,
+      "both_legs_every_month": true,
+      "missing_return_positions": 55,
+      "adverse_missing_cagr": -0.10523727750875755
+    },
+    {
+      "model": "gbm_median",
+      "months": 68,
+      "min_positions": 200,
+      "max_positions": 200,
+      "max_gross": 2.0000000000000004,
+      "min_net": -0.1499638873058976,
+      "max_net": 0.19294479491281635,
+      "no_duplicate_positions": true,
+      "both_legs_every_month": true,
+      "missing_return_positions": 40,
+      "adverse_missing_cagr": -0.15436242379483145
+    },
+    {
+      "model": "gbm_median_matched",
+      "months": 68,
+      "min_positions": 200,
+      "max_positions": 200,
+      "max_gross": 2.0000000000000004,
+      "min_net": -0.19472549957352236,
+      "max_net": 0.18802418519930963,
+      "no_duplicate_positions": true,
+      "both_legs_every_month": true,
+      "missing_return_positions": 36,
+      "adverse_missing_cagr": -0.08577767509404355
+    },
+    {
+      "model": "annual_blend",
+      "months": 68,
+      "min_positions": 200,
+      "max_positions": 200,
+      "max_gross": 2.0000000000000004,
+      "min_net": -0.30000000000000027,
+      "max_net": 0.30000000000000027,
+      "no_duplicate_positions": true,
+      "both_legs_every_month": true,
+      "missing_return_positions": 60,
+      "adverse_missing_cagr": -0.10379337282046597
+    }
+  ],
+  "preprocessing_observed_values_identical": true,
+  "prediction_universe_independent_of_future_label": true
+}
