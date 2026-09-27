@@ -38,6 +38,7 @@ REPORTS = (
     "04_backtest_scoring/11_deck_pack.py",
     "04_backtest_scoring/12_feature_importance.py",
     "04_backtest_scoring/06_robustness.py",
+    "04_backtest_scoring/15_neutrality_check.py",
     "04_backtest_scoring/10_daily_risk.py",
 )
 

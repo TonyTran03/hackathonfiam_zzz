@@ -772,23 +772,49 @@ appendix("A proposed improvement we tested and did not adopt",
     + "(baseline +0.85); the dose curve and variant S are on the submitted book.");
 
   // ---- the punchline strip ----
+  // Separating what is exact from what is estimated, because the case for this
+  // change rests on exposure and the case against rested on return, and an
+  // earlier version of this page collapsed the two into "nothing can be acted
+  // on". Sector exposure is arithmetic on the weights; beta is an estimate.
+  const nc = readCsv("neutrality_check.csv");
+  const N = needle => {
+    const h = nc.find(r => r.metric.toLowerCase().includes(needle.toLowerCase()));
+    if (!h) throw new Error("neutrality_check.csv has no metric matching: " + needle);
+    return h.value.trim();
+  };
+  const Nn = needle => {
+    const h = nc.find(r => r.metric.toLowerCase().includes(needle.toLowerCase()));
+    return h && h.note ? h.note.trim() : "";
+  };
   s.addShape(pres.ShapeType.roundRect, {
-    x: 0.6, y: 5.52, w: 12.1, h: 1.24, fill: { color: TINT }, line: { color: TINT },
+    x: 0.6, y: 5.42, w: 12.1, h: 1.36, fill: { color: TINT }, line: { color: TINT },
     rectRadius: 0.05 });
-  s.addText("Why none of it can be acted on", {
-    x: 0.85, y: 5.66, w: 11.6, h: 0.26, isTextBox: true, margin: 0,
+  s.addText("What this evidence can decide, and what it cannot", {
+    x: 0.85, y: 5.55, w: 11.6, h: 0.26, isTextBox: true, margin: 0,
     fontFace: BODY, fontSize: 11.5, bold: true, color: NAVY });
   s.addText([
-    { text: "A 24-month validation window cannot detect an information-ratio gap below "
-           + pw("validation") + "; the 68-month test period cannot detect one below "
-           + pw("evaluation") + ". Every effect measured here is between +0.2 and +0.4.",
-      options: { breakLine: true, bold: true, color: INK } },
-    { text: "Conclusions that reverse when a smoothing parameter moves are what a "
-           + "sub-resolution effect looks like, and ours reversed three times. We report "
-           + "sector neutrality as untested rather than rejected, and we did not change "
-           + "the book on evidence our own sample cannot resolve." },
-  ], { x: 0.85, y: 5.96, w: 11.6, h: 0.76, isTextBox: true, margin: 0, valign: "top",
-       fontFace: BODY, fontSize: 10.5, color: GREY, lineSpacingMultiple: 1.02 });
+    { text: "Exact. ", options: { bold: true, color: NAVY } },
+    { text: "Sector net exposure falls from " + N("sector net exposure, traded")
+           + " to " + N("sector net exposure, variant") + ". That is arithmetic on the "
+           + "weights and carries no sampling error at all.",
+      options: { breakLine: true, color: INK } },
+    { text: "Estimated, and not established. ", options: { bold: true, color: RED } },
+    { text: "Market sensitivity is the mandate metric, and it does not hold up: "
+           + N("windows where |beta| improves") + " rolling windows improve ("
+           + Nn("windows where |beta| improves") + "), full-period |beta| moves "
+           + N("change in |beta|") + " — " + Nn("change in |beta|") + " — and the "
+           + "headline last window, " + N("last window, traded") + " to "
+           + N("last window, variant") + ", is " + Nn("size of that improvement") + ".",
+      options: { breakLine: true, color: INK } },
+    { text: "Not resolvable. ", options: { bold: true, color: NAVY } },
+    { text: "Validation cannot detect an IR gap below " + pw("validation")
+           + ", the test period below " + pw("evaluation") + "; every effect here is "
+           + "between +0.2 and +0.4, and our own conclusions reversed three times. "
+           + "The book is unchanged: adopting would be a judgement about mandate "
+           + "exposure, not a statistical finding, and we would say so.",
+      options: { color: INK } },
+  ], { x: 0.85, y: 5.84, w: 11.6, h: 0.88, isTextBox: true, margin: 0, valign: "top",
+       fontFace: BODY, fontSize: 9.5, color: INK, lineSpacingMultiple: 1.0 });
 });
 
 // ------------------------------------------------------------- write -------
