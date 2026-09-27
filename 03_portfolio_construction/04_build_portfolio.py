@@ -399,8 +399,12 @@ def build(tune=True):
             ["permno", "target_month"], keep="first")
         # stage 3 only wrote the blend column onto the test frame; rebuild it
         # here from the same recipe it chose, recorded in blend.json
-        parts = json.loads((C.PROCESSED_DIR / "blend.json").read_text(
-            encoding="utf-8"))["parts"]
+        bj = json.loads((C.PROCESSED_DIR / "blend.json").read_text(encoding="utf-8"))
+        # blend.json records one recipe per fold, not one pooled recipe. The
+        # validation window lies inside the first fold -- the only fold whose
+        # validation block sits entirely before the evaluation period -- so its
+        # recipe is the one that was chosen without seeing any test month.
+        parts = bj["per_fold"][sorted(bj["per_fold"])[0]]["parts"]
         if "avg_linear" in parts and "avg_linear" not in val.columns:
             val["avg_linear"] = val[["ols", "lasso", "ridge", "en"]].mean(axis=1)
         z = val.groupby("target_month")[parts].transform(
