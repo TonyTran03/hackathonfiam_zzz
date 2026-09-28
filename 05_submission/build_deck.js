@@ -130,6 +130,30 @@ function prettyName(raw) {
 }
 
 
+/** Plain readings of the supplied characteristic codes.
+ *
+ * The panel ships these as variable names and no dictionary comes with them, so
+ * these are our readings of the standard constructions, offered so a reader does
+ * not have to decode "lti_gr1a" to see what the model is leaning on.
+ */
+const GLOSS = {
+  ivol_capm_252d: "Idiosyncratic volatility vs CAPM, 252d",
+  lti_gr1a: "Growth in long-term investments",
+  op_at: "Operating profit / assets",
+  sti_gr1a: "Growth in short-term investments",
+  ni_me: "Earnings yield (net income / market cap)",
+  rmax5_21d: "Mean of 5 best daily returns, 21d",
+  market_equity: "Market capitalisation",
+  fcf_me: "Free cash flow yield",
+  zero_trades_21d: "Zero-volume days in 21d (illiquidity)",
+  op_atl1: "Operating profit / lagged assets",
+  ret_1_0: "Last month's return (reversal)",
+  inv_gr1a: "Inventory growth",
+  bidaskhl_21d: "Bid-ask spread proxy, 21d",
+  netdebt_me: "Net debt / market cap",
+  ret_9_1: "9-month momentum, skipping last month",
+};
+
 /** The model's own attention, grouped into families, as one sentence. */
 const featimp = readCsv("feature_importance.csv");
 function famTotals() {
@@ -374,61 +398,79 @@ function fig(s, name, x, y, w, h) {
 // =========================================================== SLIDE 3 ========
 {
   const s = slide(false);
-  title(s, "Data and method", "147 supplied characteristics; the 8-K corpus measured and reported");
+  title(s, "Data and method", "147 supplied characteristics; which of them the model actually uses");
 
-  s.addText("Forecast", { x: 0.6, y: 1.62, w: 5.8, h: 0.28, isTextBox: true, margin: 0,
-    fontFace: BODY, fontSize: 13, bold: true, color: NAVY });
-  bullets(s, 0.6, 1.94, 5.9, [
+  s.addText("Forecast", { x: 0.6, y: 1.58, w: 5.8, h: 0.26, isTextBox: true, margin: 0,
+    fontFace: BODY, fontSize: 12.5, bold: true, color: NAVY });
+  bullets(s, 0.6, 1.86, 5.9, [
     "Gradient-boosted trees, refit annually on an expanding window with a rolling "
-      + "two-year validation block, split by target month.",
+      + "two-year validation block, split by target month. Chosen over the linear "
+      + "models on validation rank correlation, fold by fold.",
     "Missing values are NOT imputed for the trees. Missingness is informative - stocks "
       + "missing the most characteristics have a median cap of $282m against $1,687m.",
     "The target is demeaned within each month. Fitting raw returns stopped after ONE "
       + "boosting round: training averaged +0.27%/month against +2.52% in validation.",
     "Model choice is made inside each fold on that fold's validation block only.",
-  ], 10.5);
+  ], 10);
 
   s.addText("Out-of-sample R-squared, benchmarked against zero", {
-    x: 0.6, y: 4.35, w: 5.9, h: 0.28, isTextBox: true, margin: 0,
-    fontFace: BODY, fontSize: 12, bold: true, color: NAVY });
-  table(s, 0.6, 4.66, 5.9, ["Model", "OOS R2", "Monthly IC"], [
+    x: 0.6, y: 4.02, w: 5.9, h: 0.26, isTextBox: true, margin: 0,
+    fontFace: BODY, fontSize: 11.5, bold: true, color: NAVY });
+  table(s, 0.6, 4.3, 5.9, ["Model", "OOS R2", "Monthly IC"], [
     ["Gradient-boosted trees", "+0.3956%", "+0.1354"],
     ["Ridge", "+0.0278%", "+0.1193"],
     ["OLS", "-0.0068%", "+0.0806"],
     ["Lasso / Elastic Net", "negative", "+0.08"],
-  ], [2.7, 1.6, 1.6], 10);
-  caption(s, 0.6, 5.95, 5.9,
-    "The rules note 1-2% is typical even for neural networks. A large positive number "
-    + "would mean a leak, not skill.");
+  ], [2.7, 1.6, 1.6], 9.5);
+  caption(s, 0.6, 5.82, 5.9,
+    "The rules note 1-2% is typical even for neural networks; a large positive number "
+    + "would mean a leak, not skill. The 8-K corpus was measured and excluded - three "
+    + "independent tests, one null, one exception, in the appendix.");
 
-  s.addText("The 8-K corpus: measured, not assumed", {
-    x: 6.9, y: 1.62, w: 5.8, h: 0.28, isTextBox: true, margin: 0,
-    fontFace: BODY, fontSize: 13, bold: true, color: NAVY });
-  bullets(s, 6.9, 1.94, 5.8, [
-    "27 single-signal tests on item codes. None survives a monthly cross-sectional "
-      + "regression with controls.",
-    "Joined into the model: validation rank correlation +0.1087 without, +0.1082 with. "
-      + "No gain.",
-    "The model's own usage agrees - the ten filing columns take 1.71% of its attention "
-      + "against the 6.37% an average feature would.",
-    "One exception: item 5.02 is null in aggregate (+0.046%/mo, t=+0.5) but splits into "
-      + "abrupt departures at -0.640%/mo (t=-1.9) and routine appointments at +0.121%.",
-  ], 10.5);
-  s.addShape(pres.ShapeType.roundRect, { x: 6.9, y: 4.62, w: 5.8, h: 1.55,
-    fill: { color: TINT }, line: { color: TINT }, rectRadius: 0.06 });
-  s.addText("The trap worth knowing", {
-    x: 7.12, y: 4.76, w: 5.4, h: 0.26, isTextBox: true, margin: 0,
-    fontFace: BODY, fontSize: 11, bold: true, color: NAVY });
-  s.addText("Item 5.02's own heading contains every keyword worth searching for. "
-          + "Measured raw, \"appoint\" appears in 99.2% of these filings and the "
-          + "sub-item markers in 88-100%. Strip the heading and they fall to 54.5% "
-          + "and below. Any classifier trained on the unstripped text is learning "
-          + "the title.", {
-    x: 7.12, y: 5.04, w: 5.4, h: 1.05, isTextBox: true, margin: 0, valign: "top",
-    fontFace: BODY, fontSize: 10, color: INK, lineSpacingMultiple: 1.0 });
-  s.addNotes("The text answer is a measured null with three independent lines of "
-           + "evidence, plus one signal that the aggregate was hiding. That is a "
-           + "result, not a gap.");
+  // --- which characteristics, grouped and glossed -------------------------
+  s.addText("Which characteristics the model uses", {
+    x: 6.75, y: 1.58, w: 5.95, h: 0.26, isTextBox: true, margin: 0,
+    fontFace: BODY, fontSize: 12.5, bold: true, color: NAVY });
+  table(s, 6.75, 1.88, 5.95, ["Family", "Share of split gain"],
+    famTotals().filter(([k]) => k !== "other")
+               .map(([k, v]) => [k, (100 * v).toFixed(1) + "%"]),
+    [4.2, 1.75], 8.5);
+  s.addText("Ten most used characteristics, averaged over six annual refits", {
+    x: 6.75, y: 3.64, w: 5.95, h: 0.24, isTextBox: true, margin: 0,
+    fontFace: BODY, fontSize: 10.5, bold: true, color: NAVY });
+  table(s, 6.75, 3.92, 5.95, ["Characteristic", "What it measures", "Share"],
+    featimp.filter(r => +r.rank <= 10)
+           .sort((a, b) => a.rank - b.rank)
+           .map(r => [r.characteristic, GLOSS[r.characteristic] || r.family,
+                      (100 * parseFloat(r.mean_gain_share)).toFixed(2) + "%"]),
+    [1.75, 3.1, 1.1], 8);
+
+  // --- the agentic question, answered plainly -----------------------------
+  s.addShape(pres.ShapeType.roundRect, { x: 0.6, y: 6.34, w: 12.1, h: 1.0,
+    fill: { color: TINT }, line: { color: TINT }, rectRadius: 0.05 });
+  s.addText([
+    { text: "Where AI was used, and where it deliberately was not.  ",
+      options: { bold: true, color: NAVY } },
+    { text: "No part of the traded pipeline is agentic: every forecast comes from "
+           + "LightGBM and Ridge fitted to the supplied characteristics, and no "
+           + "language model reads a filing, proposes a feature or scores a stock. "
+           + "AI was used to write and review pipeline code, to run diagnostics, and "
+           + "to attack our own results - the short-leg regime split, the cross-fold "
+           + "leak in model selection, the survivorship structure of the 8-K linkage "
+           + "and the sector-neutrality tests were all found that way. Keeping it out "
+           + "of the forecast is how we prevent model-side look-ahead: an LLM trained "
+           + "past 2021 cannot be shown a 2021 stock and asked what happens next. "
+           + "Every AI-proposed change was scored on the pre-registered validation "
+           + "window before it was allowed near the book, and the ones that failed "
+           + "there are reported in the appendix rather than dropped.",
+      options: { color: INK } },
+  ], { x: 0.82, y: 6.44, w: 11.66, h: 0.84, isTextBox: true, margin: 0, valign: "top",
+       fontFace: BODY, fontSize: 8.5, lineSpacingMultiple: 0.98 });
+
+  s.addNotes("Page 3 answers three of the brief's questions: why this model, how "
+           + "training is structured, and which characteristics drive it. The agentic "
+           + "paragraph answers the fourth honestly - our pipeline is not agentic, and "
+           + "that is a choice we can defend rather than a gap.");
 }
 
 // =========================================================== SLIDE 4 ========
@@ -439,7 +481,9 @@ function fig(s, name, x, y, w, h) {
   stat(s, 0.6, 1.66, 2.9, "Annualised (CAGR)", M("annualised, geometric"), "arithmetic " + M("annualised, arithmetic"));
   stat(s, 3.68, 1.66, 2.9, "Cumulative", M("cumulative over the period"), "hurdle " + M("benchmark cumulative"));
   stat(s, 6.76, 1.66, 2.9, "Hit rate", M("hit rate"), "months beating the hurdle");
-  stat(s, 9.84, 1.66, 2.86, "Mean month", M("average monthly return"), "best " + M("best month") + " / worst " + M("worst month"));
+  stat(s, 9.84, 1.66, 2.86, "Mean month", M("average monthly return"),
+       "best " + M("best month") + " " + note("best month")
+       + " / worst " + M("worst month") + " " + note("worst month"));
 
   s.addText("Calendar years", { x: 0.6, y: 3.45, w: 5.6, h: 0.28, isTextBox: true,
     margin: 0, fontFace: BODY, fontSize: 13, bold: true, color: NAVY });
@@ -578,52 +622,91 @@ function fig(s, name, x, y, w, h) {
 
   const cols = [
     ["What worked", ICE, [
-      "Portfolio construction moved the book from beta -0.537 to " + M("BETA vs S&P")
+      "Construction moved the book from beta -0.537 to " + M("BETA vs S&P")
         + " and cut drawdown from -30% to " + M("maximum drawdown (monthly") + ".",
-      "Alpha survives market, size and value: " + R("market + size + value")
-        + "/yr, " + Rnote("market + size + value") + ". It is not a repackaged factor.",
+      "Alpha survives market, size, value and momentum: "
+        + R("market + size + value + momentum") + "/yr, "
+        + Rnote("market + size + value + momentum") + ". Only value loads at all; the "
+        + "rest are indistinguishable from zero.",
       "The long leg has genuine selection skill since 2023: +8.81% over the eligible "
         + "universe, t=+2.4 across 44 months.",
     ]],
     ["What did not", "F3C6C0", [
-      "The short leg's edge was one regime. In the pre-test validation window it pointed "
-        + "the wrong way (+5.42% vs universe); since 2023 it is statistically zero.",
-      "8-K signals add nothing measurable to the forecast, across three independent tests.",
+      "The short leg's edge was one regime. In the pre-test validation window it "
+        + "pointed the wrong way (+5.42% vs universe); since 2023 it is statistically "
+        + "zero.",
+      "8-K signals add nothing measurable, across three independent tests - and the "
+        + "corpus itself is survivorship-linked, which is in the appendix.",
       "Removing the 5 best months of 68 takes the information ratio from "
         + M("INFORMATION RATIO") + " to " + R("minus the 5 best months") + ".",
     ]],
-    ["What we would say about the future", ICE, [
+    ["What we would do next", ICE, [
       "The second half of the window runs at " + R("second half") + " against "
-        + R("first half") + " in the first. The later figure is the more honest "
-        + "forward expectation; 2021-22 dominates the full-period number.",
-      "The short book's job is neutrality, not return. We would size it as a hedge, not "
-        + "as a second source of alpha.",
-      "We evaluated the test period 13 times. Nine followed a diagnosed defect; three "
-        + "were genuine trials, one of which we removed after it failed.",
-      "The improvement we would make next is sector neutrality: " + Number(
-          readCsv("sector_dose.csv").find(r => r.book === "lambda 0.00").net_sector
-        ).toFixed(0) + "% of capital sits in sector bets nobody chose. We tested it four "
-        + "ways and report it as untested rather than rejected - the appendix explains "
-        + "why our sample cannot resolve an effect that size.",
+        + R("first half") + ". The later figure is the more honest forward expectation.",
+      "The short book's job is neutrality, not return. We would size it as a hedge.",
+      "Sector neutrality: 90% of capital sits in sector bets nobody chose. Tested four "
+        + "ways, reported as untested rather than rejected - our sample cannot resolve "
+        + "an effect that size. Appendix.",
+      "We evaluated the test period 13 times. Nine followed a diagnosed defect.",
     ]],
   ];
   cols.forEach((c, i) => {
     const x = 0.7 + i * 4.15;
-    s.addText(c[0], { x, y: 1.5, w: 3.85, h: 0.32, isTextBox: true, margin: 0,
-      fontFace: BODY, fontSize: 15, bold: true, color: c[1] });
+    s.addText(c[0], { x, y: 1.32, w: 3.85, h: 0.3, isTextBox: true, margin: 0,
+      fontFace: BODY, fontSize: 13.5, bold: true, color: c[1] });
     s.addText(c[2].map((t, j) => ({
       text: t, options: { bullet: true, breakLine: j !== c[2].length - 1 },
-    })), { x, y: 1.92, w: 3.85, h: 3.9, isTextBox: true, margin: 0, valign: "top",
-      fontFace: BODY, fontSize: 11.5, color: WHITE, paraSpaceAfter: 10,
-      lineSpacingMultiple: 1.05 });
+    })), { x, y: 1.68, w: 3.85, h: 2.5, isTextBox: true, margin: 0, valign: "top",
+      fontFace: BODY, fontSize: 9.5, color: WHITE, paraSpaceAfter: 6,
+      lineSpacingMultiple: 1.02 });
   });
 
-  s.addText("Every one of these was measured, not asserted. The appendix carries the "
-          + "regressions, the research log and the compliance output.", {
-    x: 0.7, y: 6.1, w: 11.9, h: 0.5, isTextBox: true, margin: 0,
-    fontFace: BODY, fontSize: 12, italic: true, color: ICE });
+  // --- the two questions the brief asks by name ---------------------------
+  const contrib10 = contrib.slice().sort((a, b) =>
+      Math.abs(parseFloat(b.pnl)) - Math.abs(parseFloat(a.pnl)));
+  const line = r => r.ticker + ", " + prettyName(r.company_name) + "  "
+      + (100 * parseFloat(r.pnl) >= 0 ? "+" : "")
+      + (100 * parseFloat(r.pnl)).toFixed(2) + "%  (" + r.side + ", " + r.months + "mo)";
+
+  s.addText("The positions that drove it", {
+    x: 0.7, y: 4.42, w: 5.9, h: 0.28, isTextBox: true, margin: 0,
+    fontFace: BODY, fontSize: 12.5, bold: true, color: ICE });
+  s.addText(contrib10.filter(r => parseFloat(r.pnl) > 0).slice(0, 4).map(r =>
+      ({ text: line(r), options: { bullet: true, breakLine: true } }))
+    .concat([{ text: "Largest single loss: "
+        + line(contrib10.filter(r => parseFloat(r.pnl) < 0)[0])
+        + " - a short in a biotech that re-rated on trial data. No characteristic in "
+        + "the panel anticipates a readout, which is the honest limit of this approach.",
+      options: { bullet: true } }]), {
+    x: 0.7, y: 4.76, w: 5.9, h: 2.3, isTextBox: true, margin: 0, valign: "top",
+    fontFace: BODY, fontSize: 9, color: WHITE, paraSpaceAfter: 4,
+    lineSpacingMultiple: 1.02 });
+
+  s.addText("The macro backdrop", {
+    x: 6.9, y: 4.42, w: 5.8, h: 0.28, isTextBox: true, margin: 0,
+    fontFace: BODY, fontSize: 12.5, bold: true, color: ICE });
+  const yr = y => years.find(r => r.metric === y).value.split("/").map(x => x.trim());
+  s.addText([
+    { text: "2021  " + yr("2021")[0] + " against the S&P's " + yr("2021")[2]
+           + ". Post-COVID reflation and the retail speculative peak; the short book "
+           + "carried the year.", options: { bullet: true, breakLine: true } },
+    { text: "2022  " + yr("2022")[0] + " while the S&P fell " + yr("2022")[2]
+           + ". The hiking cycle de-rated long-duration growth - our best year, and "
+           + "the clearest evidence the book is not a disguised long.",
+      options: { bullet: true, breakLine: true } },
+    { text: "2023-25  AI-led concentration in mega-caps. The short edge disappears and "
+           + "the long leg takes over; " + R("2023-25 concentration")
+           + " over those three years.", options: { bullet: true, breakLine: true } },
+    { text: "2026  " + yr("2026")[0] + " against " + yr("2026")[2]
+           + " in eight months, with rolling beta drifting to -0.63 by August - the "
+           + "drift the appendix flags.", options: { bullet: true } },
+  ], { x: 6.9, y: 4.76, w: 5.8, h: 2.3, isTextBox: true, margin: 0, valign: "top",
+       fontFace: BODY, fontSize: 9, color: WHITE, paraSpaceAfter: 4,
+       lineSpacingMultiple: 1.02 });
+
   s.addNotes("This is the page the rules are really asking for: did it do what you "
-           + "trained it to, what drove it, and what would you change.");
+           + "trained it to, which signals drove it, which positions, which macro "
+           + "events, and what you would change.");
 }
 
 // ========================================================== APPENDIX ========
@@ -748,8 +831,14 @@ appendix("Research log and multiple testing",
         + "target not demeaned (one boosting round per fold), leg beta measured rather "
         + "than estimated, unstable validation tuning, and a cross-fold leak in model "
         + "selection.",
-      "Three were genuine trials: the tree model, turnover control, and the 8-K feature "
-        + "set. We removed the third after it failed its pre-declared test.",
+      "Four were genuine trials: the tree model, turnover control, the 8-K feature set, "
+        + "and sector neutrality. The 8-K set was removed after it failed its "
+        + "pre-declared test. Sector neutrality was proposed after the diagnosis that "
+        + "90% of capital sits in sector positions nobody chose; it was implemented two "
+        + "ways, scored first on the pre-registered 2019-20 window, and then varied "
+        + "across quota rule, smoothing and buffer. It led in 7 of 18 configurations "
+        + "(binomial p = 0.48) and our own conclusion about it reversed three times. It "
+        + "is reported as untested rather than rejected and the book was not changed.",
       "One correction is worth naming. choose_blend pooled all six folds' validation "
         + "blocks before picking one model for all six years, so the 2021 forecast was "
         + "chosen partly on 2024-25 outcomes. Each fold's own split was clean and our "
@@ -758,7 +847,10 @@ appendix("Research log and multiple testing",
         + "old format.",
       "What we take from this: with 68 months and this many looks, a t-statistic near 2 "
         + "is not evidence. What makes a result worth keeping is effect size, a reason to "
-        + "expect it in advance, and survival across regimes - not the t.",
+        + "expect it in advance, and survival across regimes - not the t. The sector "
+        + "work put a number on the limit: this validation window cannot resolve an "
+        + "information-ratio gap below 1.12, and the test period below 0.66, so effects "
+        + "of the size we were chasing are invisible to us either way.",
     ], 12);
     s.addShape(pres.ShapeType.roundRect, { x: 0.6, y: 5.0, w: 12.1, h: 1.5,
       fill: { color: TINT }, line: { color: TINT }, rectRadius: 0.06 });
