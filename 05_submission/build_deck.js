@@ -30,6 +30,12 @@ const GREY = "6B7280";
 const INK = "1A1A1A";
 const TINT = "F2F5FC";
 
+// Team registration. Fill TEAM_NAME in before submitting: it is deliberately
+// loud rather than blank so it cannot be shipped unnoticed.
+const TEAM_NAME = "[TEAM NAME - FILL IN]";
+const TEAM_MEMBERS = ["Junhong Zhou", "Tony Tran", "Faig Haji", "Bohan Zhang",
+                      "Alex [surname]"];
+
 const HEAD = "Cambria";
 const BODY = "Calibri";
 
@@ -276,6 +282,14 @@ function fig(s, name, x, y, w, h) {
           + "long book. We do not claim the first is repeatable.",
     { x: 0.8, y: 5.85, w: 11.7, h: 0.75, isTextBox: true, margin: 0,
       fontFace: BODY, fontSize: 12, italic: true, color: ICE });
+  // The brief registers the team through the deck and the CVs, so the title page
+  // carries both. TEAM_NAME is the one thing this repository cannot derive.
+  s.addText([
+    { text: TEAM_NAME, options: { bold: true, color: WHITE, breakLine: true } },
+    { text: TEAM_MEMBERS.join("   ·   "), options: { color: ICE } },
+  ], { x: 0.8, y: 6.62, w: 11.7, h: 0.62, isTextBox: true, margin: 0, valign: "top",
+       fontFace: BODY, fontSize: 12, lineSpacingMultiple: 1.05 });
+
   s.addNotes("Headline is the information ratio against cash plus 4 percent, which is "
            + "the competition's scoring metric. Gross figure first, net of 20bps beside "
            + "it. Beta is the neutrality evidence and is checked before anything else.");
