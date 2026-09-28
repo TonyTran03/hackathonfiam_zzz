@@ -182,14 +182,24 @@ def main():
     S, L = h[h["weight"] < 0], h[h["weight"] > 0]
     put("short_book", "median market cap, short leg", "$%.0fm" % S["me"].median(),
         "long leg $%.0fm" % L["me"].median())
-    if "dolvol" in h.columns and h["dolvol"].notna().any():
+    # `dolvol` is the month's total dollar volume; `dolvol_126d` is the trailing
+    # daily average. Reporting the first as "daily" overstates borrowability by
+    # roughly the number of trading days in a month, so the daily line uses
+    # dolvol_126d and the monthly total is labelled as monthly.
+    if "dolvol_126d" in h.columns and h["dolvol_126d"].notna().any():
         put("short_book", "median daily dollar volume, short leg",
-            "$%.1fm" % (S["dolvol"].median() / 1e6),
-            "long leg $%.1fm" % (L["dolvol"].median() / 1e6))
+            "$%.0fm" % (S["dolvol_126d"].median() / 1e6),
+            "long leg $%.0fm -- 126-day average, not the monthly total"
+            % (L["dolvol_126d"].median() / 1e6))
     else:
-        put("short_book", "median dollar volume, short leg", "NOT COMPUTED",
-            "add dolvol to PANEL_COLS in stage 4")
-    put("short_book", "median price, short leg", "$%.2f" % S["prc"].median())
+        put("short_book", "median daily dollar volume, short leg", "NOT COMPUTED",
+            "add dolvol_126d to PANEL_COLS in stage 4")
+    if "dolvol" in h.columns and h["dolvol"].notna().any():
+        put("short_book", "median monthly dollar volume, short leg",
+            "$%.2fbn" % (S["dolvol"].median() / 1e9),
+            "long leg $%.2fbn" % (L["dolvol"].median() / 1e9))
+    put("short_book", "median price, short leg", "$%.2f" % S["prc"].median(),
+        "long leg $%.2f" % L["prc"].abs().median())
     put("short_book", "share of short leg in small caps or below",
         "%.1f%%" % (100 * S["size_grp"].isin(["nano", "micro", "small"]).mean()),
         "nano/micro excluded by screen")

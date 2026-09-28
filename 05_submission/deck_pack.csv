@@ -34,8 +34,9 @@ exposure,share of book in the top 10 names,9.7%,
 exposure,average monthly turnover,24.6%,range 17%-41%
 exposure,notional traded per month,99% of capital,
 short_book,"median market cap, short leg",$3714m,long leg $2577m
-short_book,"median daily dollar volume, short leg",$1150.3m,long leg $559.3m
-short_book,"median price, short leg",$28.85,
+short_book,"median daily dollar volume, short leg",$55m,"long leg $27m -- 126-day average, not the monthly total"
+short_book,"median monthly dollar volume, short leg",$1.15bn,long leg $0.56bn
+short_book,"median price, short leg",$28.85,long leg $45.05
 short_book,share of short leg in small caps or below,48.7%,nano/micro excluded by screen
 delisting,positions with no realised return,"50 of 13,600",35 long / 15 short
 delisting,gross weight in such positions,"86.92% of capital, summed over all months",worst single month 5.39%

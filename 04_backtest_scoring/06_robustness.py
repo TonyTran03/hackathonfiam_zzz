@@ -147,10 +147,20 @@ def factor_attribution(m):
 
     d = m.merge(ff[["target_month", "mkt_rf", "smb", "hml"]], on="target_month", how="inner")
     d = d.dropna(subset=["mkt_rf", "smb", "hml"])
+    d = d.merge(momentum_factor(), on="target_month", how="left")
     print("  %d months overlap with the factor file (it ends one month early)" % len(d))
-    for label, formula in [("market only", "excess_over_cash ~ mkt_rf"),
-                           ("market + size + value", "excess_over_cash ~ mkt_rf + smb + hml")]:
-        r = smf.ols(formula, data=d).fit(cov_type="HAC", cov_kwds={"maxlags": 3}, use_t=True)
+    # The regressor differs between these and the CAPM line in deck_pack.csv:
+    # here the market is Fama-French's MKT-RF, there it is the S&P 500 in excess
+    # of cash. Two defensible market definitions, two alphas, so both are named.
+    for label, formula in [
+            ("market only (FF MKT-RF)", "excess_over_cash ~ mkt_rf"),
+            ("market + size + value", "excess_over_cash ~ mkt_rf + smb + hml"),
+            ("market + size + value + momentum",
+             "excess_over_cash ~ mkt_rf + smb + hml + umd")]:
+        dd = d.dropna(subset=[c for c in ["mkt_rf", "smb", "hml", "umd"]
+                              if c in formula])
+        r = smf.ols(formula, data=dd).fit(cov_type="HAC", cov_kwds={"maxlags": 3},
+                                          use_t=True)
         print("  %-22s annualised alpha %+6.2f%%  t=%+.2f   R2 %.2f"
               % (label, 100 * 12 * r.params["Intercept"], r.tvalues["Intercept"], r.rsquared))
         rec("attribution", label, "%+.2f%%" % (100 * 12 * r.params["Intercept"]),
@@ -158,6 +168,29 @@ def factor_attribution(m):
         loads = "  ".join("%s %+.2f (t %+.1f)" % (k, r.params[k], r.tvalues[k])
                           for k in r.params.index if k != "Intercept")
         print("      %s" % loads)
+
+
+def momentum_factor():
+    """A momentum factor built from the panel, since the file supplied is FF3.
+
+    Equal-weighted top decile minus bottom decile on ret_12_1 -- prior twelve
+    months skipping the most recent one, the standard construction -- inside the
+    same tradable universe the book picks from, so the loading means the same
+    thing as the book's own exposure would.
+    """
+    cols = ["permno", "target_month", "prc", "size_grp", "ret_12_1", C.TARGET]
+    p = pd.read_parquet(C.MODEL_TABLE, columns=cols)
+    p = p[(p["prc"].abs() >= 5.0) & (~p["size_grp"].isin(("nano", "micro")))]
+    p = p.dropna(subset=["ret_12_1", C.TARGET])
+    out = []
+    for month, g in p.groupby("target_month"):
+        if len(g) < 100:
+            continue
+        q = g["ret_12_1"].rank(pct=True)
+        out.append({"target_month": month,
+                    "umd": g.loc[q > 0.9, C.TARGET].mean()
+                           - g.loc[q < 0.1, C.TARGET].mean()})
+    return pd.DataFrame(out)
 
 
 def rolling(m):

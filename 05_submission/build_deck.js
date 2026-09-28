@@ -85,6 +85,58 @@ function Rnote(needle) {
   return hit && hit.note && hit.note !== "NaN" ? hit.note.trim() : "";
 }
 
+
+/** CRSP company names, rendered the way the brief asks for them.
+ *
+ * The panel stores names in CRSP's own style: acronyms spelled out letter by
+ * letter ("C M E GROUP INC"), the state of incorporation appended ("3 D SYSTEMS
+ * CORP DEL"), and share-class history kept in the name ("LIBERTY MEDIA CORP 3RD
+ * NEW"). The brief asks for "NVDA, NVIDIA Corporation", so the letters are put
+ * back together, the registration suffixes dropped and the rest title-cased.
+ * Nothing is looked up or substituted -- this only reformats what the panel says.
+ */
+const KEEP_UPPER = new Set(["USA", "US", "PLC", "NV", "SA", "AG", "LP", "LLC",
+                            "AB", "ASA", "II", "III", "IV", "REIT", "ETF"]);
+const MARK = "";
+function prettyName(raw) {
+  if (!raw) return "";
+  let t = String(raw).trim().toUpperCase();
+  t = t.replace(/\s+(3RD|2ND|1ST)\s+NEW$/, "").replace(/\s+NEW$/, "")
+       .replace(/\s+DEL$/, "");
+  // Spelled-out acronyms: "C M E" -> "CME", "P G & E" -> "PG&E", "3 D" -> "3D".
+  // Only these are kept upper-case later, which is why they are marked here --
+  // a plain four-letter word like LIME must not be mistaken for an acronym.
+  t = t.replace(/\b[A-Z0-9](?:\s*&?\s*\b[A-Z0-9]\b){1,4}/g, m => {
+    const j = m.replace(/\s+/g, "");
+    return j.length <= 5 ? MARK + j + MARK : m;
+  });
+  t = t.replace(/\s+&\s+/g, " & ");
+  const small = new Set(["OF", "AND", "THE", "FOR", "DE"]);
+  return t.split(/\s+/).map((w, i) => {
+    if (w.indexOf(MARK) >= 0) return w.split(MARK).join("");
+    if (KEEP_UPPER.has(w.replace(/[^A-Z0-9&.]/g, ""))) return w;
+    if (i > 0 && small.has(w)) return w.toLowerCase();
+    return w.charAt(0) + w.slice(1).toLowerCase();
+  }).join(" ")
+   .replace(/Hldgs/g, "Holdings").replace(/Grp/g, "Group")
+   .replace(/Intl/g, "International").replace(/Techs/g, "Technologies")
+   .replace(/Cos/g, "Companies").replace(/Mfg/g, "Manufacturing");
+}
+
+
+/** The model's own attention, grouped into families, as one sentence. */
+const featimp = readCsv("feature_importance.csv");
+function famTotals() {
+  const t = {};
+  featimp.forEach(r => { t[r.family] = (t[r.family] || 0) + parseFloat(r.mean_gain_share); });
+  return Object.entries(t).sort((a, b) => b[1] - a[1]);
+}
+function famLine() {
+  return famTotals().slice(0, 4)
+    .map(([k, v]) => k.split(" / ")[0] + " " + (100 * v).toFixed(0) + "%")
+    .join(", ") + " of the model's split gain, across 147 characteristics.";
+}
+
 // -------------------------------------------------------------- helpers -----
 const pres = new pptxgen();
 pres.layout = "LAYOUT_WIDE";            // 13.3 x 7.5 inches
@@ -135,7 +187,7 @@ function stat(s, x, y, w, label, value, caption, colour) {
 /** A simple two-column table with a header row. */
 function table(s, x, y, w, head, rows, colWidths, fontSize) {
   const fs_ = fontSize || 10.5;
-  const rowH = fs_ > 10 ? 0.26 : 0.23;
+  const rowH = fs_ > 10 ? 0.26 : (fs_ >= 9 ? 0.23 : 0.205);
   const body = rows.map(r => r.map((c, i) => ({
     text: String(c),
     options: { align: i === 0 ? "left" : "right", fontSize: fs_, fontFace: BODY,
@@ -147,7 +199,7 @@ function table(s, x, y, w, head, rows, colWidths, fontSize) {
                fontFace: BODY, color: WHITE, fill: { color: NAVY } },
   }))].concat(body), {
     x, y, w, colW: colWidths, rowH, border: { type: "solid", pt: 0.5, color: "E3E7F0" },
-    margin: 4,
+    margin: fs_ < 9 ? 2 : 4,
   });
 }
 
@@ -234,55 +286,75 @@ function fig(s, name, x, y, w, h) {
   const s = slide(false);
   title(s, "The strategy", "Rank, then remove everything we are not trying to bet on");
 
+  // The brief asks page 2 for four things by name: how the legs are built, WHICH
+  // definition of neutrality is enforced, which signals drive the forecast, and
+  // the top ten of each leg with the cumulative chart. All four are here.
   const steps = [
-    ["1. Screen", "Price >= $5, no nano or micro caps. Without it the short book fills "
-      + "with penny stocks: median cap $50m, and -48% in January 2021 alone."],
-    ["2. Residualise", "The forecast is regressed on sector, size and beta each month; "
-      + "only the residual is traded. Neutrality is enforced on the signal, not patched "
-      + "onto the weights."],
-    ["3. Smooth", "Scores averaged over three months. Turnover falls from 56% to "
-      + M("average monthly turnover") + "; break-even cost rises to 93bps."],
-    ["4. Size", "Inverse-volatility weights inside each leg, capped near 2%. The "
-      + "information ratio is a ratio - the denominator counts."],
-    ["5. Match beta", "Leg notionals set from each leg's own realised sensitivity over "
-      + "24 completed months, not from per-stock estimates, which ran 0.30 too high on "
-      + "the long side."],
+    ["Screen", "Price >= $5, no nano or micro caps. Unscreened, the short book had a "
+      + "$50m median cap and a $2.63 median price - not borrowable at size."],
+    ["Residualise", "The forecast is regressed on sector, size and beta each month; "
+      + "only the residual is traded."],
+    ["Smooth", "Scores averaged over three months. Turnover falls 56% to "
+      + M("average monthly turnover") + "; break-even rises to " + R("break-even") + "."],
+    ["Size", "Inverse-volatility weights inside each leg, capped near 2% of capital."],
+    ["Match beta", "Leg notionals set from each leg's own realised sensitivity over 24 "
+      + "completed months, not from per-stock estimates."],
   ];
   steps.forEach((st, i) => {
-    const y = 1.72 + i * 1.02;
+    const y = 1.56 + i * 0.55;
     s.addShape(pres.ShapeType.ellipse, {
-      x: 0.62, y: y + 0.06, w: 0.38, h: 0.38, fill: { color: NAVY }, line: { color: NAVY } });
-    s.addText(String(i + 1), { x: 0.62, y: y + 0.11, w: 0.38, h: 0.28, isTextBox: true,
-      margin: 0, align: "center", fontFace: BODY, fontSize: 13, bold: true, color: WHITE });
-    s.addText(st[0].replace(/^\d+\.\s*/, ""), {
-      x: 1.14, y: y, w: 2.1, h: 0.3, isTextBox: true, margin: 0,
-      fontFace: BODY, fontSize: 13, bold: true, color: NAVY });
-    s.addText(st[1], {
-      x: 1.14, y: y + 0.3, w: 5.5, h: 0.66, isTextBox: true, margin: 0,
-      fontFace: BODY, fontSize: 10.5, color: INK, lineSpacingMultiple: 1.0 });
+      x: 0.62, y: y + 0.02, w: 0.3, h: 0.3, fill: { color: NAVY }, line: { color: NAVY } });
+    s.addText(String(i + 1), { x: 0.62, y: y + 0.055, w: 0.3, h: 0.24, isTextBox: true,
+      margin: 0, align: "center", fontFace: BODY, fontSize: 11, bold: true, color: WHITE });
+    s.addText([{ text: st[0] + "  ", options: { bold: true, color: NAVY } },
+               { text: st[1], options: { color: INK } }], {
+      x: 1.04, y: y, w: 5.3, h: 0.52, isTextBox: true, margin: 0, valign: "top",
+      fontFace: BODY, fontSize: 10, lineSpacingMultiple: 1.0 });
   });
 
-  const longs = holdings.filter(h => h.side === "long").slice(0, 8);
-  const shorts = holdings.filter(h => h.side === "short").slice(0, 8);
-  s.addText("Largest average long positions", {
-    x: 7.1, y: 1.66, w: 2.9, h: 0.26, isTextBox: true, margin: 0,
-    fontFace: BODY, fontSize: 11, bold: true, color: NAVY });
-  table(s, 7.1, 1.96, 5.6,
-        ["Ticker", "Company", "Avg wt"],
-        longs.map(h => [h.ticker, h.company_name.slice(0, 26),
-                        (100 * parseFloat(h.avg_weight_overall)).toFixed(2) + "%"]),
-        [0.85, 3.6, 1.15], 9.5);
-  s.addText("Largest average short positions", {
-    x: 7.1, y: 4.5, w: 2.9, h: 0.26, isTextBox: true, margin: 0,
-    fontFace: BODY, fontSize: 11, bold: true, color: NAVY });
-  table(s, 7.1, 4.8, 5.6,
-        ["Ticker", "Company", "Avg wt"],
-        shorts.map(h => [h.ticker, h.company_name.slice(0, 26),
-                         (100 * parseFloat(h.avg_weight_overall)).toFixed(2) + "%"]),
-        [0.85, 3.6, 1.15], 9.5);
-  s.addNotes("Every holding is named by ticker and full company name. The short book "
-           + "is more liquid than the long book: median daily dollar volume "
-           + M("median daily dollar volume") + " against " + note("median daily dollar volume") + ".");
+  // The definition of neutrality, stated rather than implied.
+  s.addShape(pres.ShapeType.roundRect, { x: 0.6, y: 4.34, w: 5.85, h: 1.02,
+    fill: { color: TINT }, line: { color: TINT }, rectRadius: 0.05 });
+  s.addText([
+    { text: "Neutrality enforced: beta, not dollar. ", options: { bold: true, color: NAVY } },
+    { text: "The legs are sized so their beta-weighted exposures cancel, so net dollar "
+           + "exposure averages " + M("average net exposure") + " rather than zero. "
+           + "Realised beta is " + M("BETA vs S&P") + " (se "
+           + note("BETA vs S&P").replace("se=", "").replace(" -- the neutrality evidence", "")
+           + "), correlation with the S&P 500 " + M("correlation with the S&P") + ".",
+      options: { color: INK } },
+  ], { x: 0.82, y: 4.44, w: 5.45, h: 0.5, isTextBox: true, margin: 0, valign: "top",
+       fontFace: BODY, fontSize: 9.5, lineSpacingMultiple: 1.0 });
+
+  // Which signals drive it -- the brief asks for this on page 2 and it is task #1
+  // of the challenge. The detail is on page 3.
+  s.addText([
+    { text: "Signals driving the forecast: ", options: { bold: true, color: NAVY } },
+    { text: famLine() + " Full ranking on page 3.", options: { color: INK } },
+  ], { x: 0.82, y: 4.96, w: 5.45, h: 0.34, isTextBox: true, margin: 0, valign: "top",
+       fontFace: BODY, fontSize: 9, color: INK, lineSpacingMultiple: 1.0 });
+
+  fig(s, "cumulative", 0.5, 5.45, 6.0, 1.92);
+
+  const longs = holdings.filter(h => h.side === "long").slice(0, 10);
+  const shorts = holdings.filter(h => h.side === "short").slice(0, 10);
+  const wt = h => (100 * parseFloat(h.avg_weight_overall)).toFixed(2) + "%";
+  s.addText("Top 10 long positions, average weight 01/2021-08/2026", {
+    x: 6.75, y: 1.5, w: 6.0, h: 0.24, isTextBox: true, margin: 0,
+    fontFace: BODY, fontSize: 10.5, bold: true, color: NAVY });
+  table(s, 6.75, 1.76, 5.95, ["Ticker", "Company name", "Avg wt"],
+        longs.map(h => [h.ticker, prettyName(h.company_name), wt(h)]), [0.85, 4.0, 1.1], 8.5);
+  s.addText("Top 10 short positions, average weight 01/2021-08/2026", {
+    x: 6.75, y: 4.44, w: 6.0, h: 0.24, isTextBox: true, margin: 0,
+    fontFace: BODY, fontSize: 10.5, bold: true, color: NAVY });
+  table(s, 6.75, 4.7, 5.95, ["Ticker", "Company name", "Avg wt"],
+        shorts.map(h => [h.ticker, prettyName(h.company_name), wt(h)]), [0.85, 4.0, 1.1], 8.5);
+
+  s.addNotes("Page 2 answers the brief's four questions in order: how the legs are "
+           + "built, which neutrality we enforce, which signals drive it, and the top "
+           + "ten of each leg with the cumulative chart. Short book median daily dollar "
+           + "volume " + M("median daily dollar volume") + ", long leg "
+           + note("median daily dollar volume").split(" -- ")[0].replace("long leg ", "") + ".");
 }
 
 // =========================================================== SLIDE 3 ========

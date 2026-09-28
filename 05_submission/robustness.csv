@@ -13,8 +13,9 @@ stress,minus the 5 best months,+0.36,
 stress,minus the 5 best stocks,+0.76,
 stress,minus the 10 best stocks,+0.67,
 stress,minus the 20 best stocks,+0.50,
-attribution,market only,+18.30%,"t=+3.37, R2 0.05"
+attribution,market only (FF MKT-RF),+18.30%,"t=+3.37, R2 0.05"
 attribution,market + size + value,+13.78%,"t=+2.47, R2 0.15"
+attribution,market + size + value + momentum,+15.15%,"t=+2.68, R2 0.17"
 rolling,12-month beta,-0.08,"range -0.63..+0.34, outside +/-0.3 in 18% of windows"
 rolling,window precision,2.0x looser,12-month se 0.24 vs 0.12 full-period
 rolling,breaches vs noise floor,18% observed vs 32% expected,expected from estimation noise alone at our full-period beta
