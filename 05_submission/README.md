@@ -57,6 +57,20 @@ explains why -30% is a conservative stress here rather than a likely case.
 `holdings.csv` — `DATE`, `PERMNO`, `TICKER`, `COMPANY_NAME`, `WEIGHT`, one row
 per position per month, 13,600 rows over 68 months.
 
+## Checking the deck against itself
+
+    node 05_submission/build_deck.js
+    python 05_submission/audit_deck.py
+
+`audit_deck.py` exists because two numbers on these slides went stale without
+anything failing: the leg attribution stayed as four literals after the book
+that produced them was replaced, and a patch that claimed to add two bullets to
+page 3 matched nothing and reported success. It runs two passes -- every
+result-shaped number typed into the slide source must be listed with a reason,
+and every value in the CSVs is looked for in the text extracted back out of the
+built PDF. The second pass is the one that matters: a patch matching nothing
+still succeeds, but a number missing from the PDF does not.
+
 ## Supporting exhibits
 
 `deck_pack.csv` and `robustness.csv` hold the performance pack and the six

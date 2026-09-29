@@ -3,11 +3,17 @@ full period,months,68,
 full period,universe return,+6.40%,"annualised, equal-weighted"
 full period,long leg excess,+8.03%,t +2.8
 full period,short leg excess,-5.80%,t -1.5
+full period,"long leg excess, sector-matched",+10.38%,against its own sectors
+full period,"short leg excess, sector-matched",-5.65%,against its own sectors
 2021-22,months,24,
 2021-22,universe return,-3.73%,"annualised, equal-weighted"
 2021-22,long leg excess,+6.12%,t +1.2
 2021-22,short leg excess,-15.63%,t -2.2
+2021-22,"long leg excess, sector-matched",+13.76%,against its own sectors
+2021-22,"short leg excess, sector-matched",-16.36%,against its own sectors
 2023-26,months,44,
 2023-26,universe return,+11.93%,"annualised, equal-weighted"
 2023-26,long leg excess,+9.07%,t +2.7
 2023-26,short leg excess,-0.44%,t -0.1
+2023-26,"long leg excess, sector-matched",+8.53%,against its own sectors
+2023-26,"short leg excess, sector-matched",+0.19%,against its own sectors

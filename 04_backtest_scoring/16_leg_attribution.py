@@ -57,11 +57,24 @@ def main():
     months = sorted(h["target_month"].unique())
 
     pan = pd.read_parquet(C.MODEL_TABLE,
-                          columns=["permno", "target_month", "prc", "size_grp", C.TARGET])
+                          columns=["permno", "target_month", "prc", "size_grp",
+                                   "gics", C.TARGET])
     pan = pan[pan["target_month"].isin(months)]
     uni = pan[(pan["prc"].abs() >= MIN_PRICE)
               & (~pan["size_grp"].isin(EXCLUDE_SIZE_GROUPS))].dropna(subset=[C.TARGET])
     u = uni.groupby("target_month")[C.TARGET].mean()
+
+    # A second benchmark, matched sector by sector. Comparing a leg against the
+    # whole universe and against its own sectors separates "these names beat
+    # the market" from "these names beat their peers". The short leg's 2021-22
+    # edge is claimed on the deck to be the second; this is what tests it.
+    uni = uni.copy()
+    uni["sec"] = uni["gics"].astype(str).str[:2]
+    sec_u = uni.groupby(["target_month", "sec"])[C.TARGET].mean()
+    h = h.copy()
+    h["sec"] = h["gics"].astype(str).str[:2]
+    h["sec_bench"] = pd.MultiIndex.from_arrays(
+        [h["target_month"], h["sec"]]).map(sec_u)
 
     # Each leg's return per dollar of its own notional, so the comparison with
     # the universe is like for like and leg sizing does not contaminate it.
@@ -70,15 +83,21 @@ def main():
         L, S = g[g["weight"] > 0], g[g["weight"] < 0]
         r = g[C.TARGET].fillna(0.0)
         lw, sw = L["weight"].sum(), -S["weight"].sum()
+        sb = g["sec_bench"]
         per.append({
             "target_month": m,
             "long": float((L["weight"] * r.loc[L.index]).sum() / lw) if lw else np.nan,
             "short": float((-S["weight"] * r.loc[S.index]).sum() / sw) if sw else np.nan,
             "uni": float(u.get(m, np.nan)),
+            # each leg's own sector-matched benchmark, weighted as the leg is
+            "long_sec": float((L["weight"] * sb.loc[L.index]).sum() / lw) if lw else np.nan,
+            "short_sec": float((-S["weight"] * sb.loc[S.index]).sum() / sw) if sw else np.nan,
         })
     d = pd.DataFrame(per).sort_values("target_month").reset_index(drop=True)
     d["long_excess"] = d["long"] - d["uni"]
     d["short_excess"] = d["short"] - d["uni"]
+    d["long_sec_excess"] = d["long"] - d["long_sec"]
+    d["short_sec_excess"] = d["short"] - d["short_sec"]
 
     print("=" * 76)
     print("LEG ATTRIBUTION vs the eligible universe  (%d months, gross of costs)"
@@ -102,6 +121,14 @@ def main():
         put(label, "universe return", "%+.2f%%" % (100 * ua), "annualised, equal-weighted")
         put(label, "long leg excess", "%+.2f%%" % (100 * la), "t %+.1f" % lt)
         put(label, "short leg excess", "%+.2f%%" % (100 * sa), "t %+.1f" % st)
+        lsa, _ = ann_t(s["long_sec_excess"])
+        ssa, _ = ann_t(s["short_sec_excess"])
+        put(label, "long leg excess, sector-matched", "%+.2f%%" % (100 * lsa),
+            "against its own sectors")
+        put(label, "short leg excess, sector-matched", "%+.2f%%" % (100 * ssa),
+            "against its own sectors")
+        print("  %-14s %7s %13s %9.2f%% sector   %8.2f%% sector"
+              % ("", "", "", 100 * lsa, 100 * ssa))
 
     print("\n  The edge changes legs: the short leg carries 2021-22 and is")
     print("  indistinguishable from zero afterwards; the long leg is the reverse.")

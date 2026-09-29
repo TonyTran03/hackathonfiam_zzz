@@ -498,23 +498,33 @@ function fig(s, name, x, y, w, h) {
   title(s, "Returns", "2021-01 to 2026-08, 68 months, gross of trading costs unless stated");
 
   stat(s, 0.6, 1.66, 2.9, "Annualised (CAGR)", M("annualised, geometric"), "arithmetic " + M("annualised, arithmetic"));
-  stat(s, 3.68, 1.66, 2.9, "Cumulative", M("cumulative over the period"), "hurdle " + M("benchmark cumulative"));
+  stat(s, 3.68, 1.66, 2.9, "Cumulative", M("cumulative over the period"),
+       "hurdle " + M("benchmark cumulative") + ", S&P " + M("S&P 500 cumulative"));
   stat(s, 6.76, 1.66, 2.9, "Hit rate", M("hit rate"), "months beating the hurdle");
   stat(s, 9.84, 1.66, 2.86, "Mean month", M("average monthly return"),
        "best " + M("best month") + " " + note("best month")
        + " / worst " + M("worst month") + " " + note("worst month"));
 
-  s.addText("Calendar years", { x: 0.6, y: 3.45, w: 5.6, h: 0.28, isTextBox: true,
+  s.addText([
+    { text: "Each leg separately, per month:  ", options: { bold: true, color: NAVY } },
+    { text: "long " + M("long leg, average month") + ", short "
+           + M("short leg, average month") + ". The short leg contributes almost "
+           + "nothing on average and earns its place by what it removes, not by what "
+           + "it adds.", options: { color: INK } },
+  ], { x: 0.6, y: 3.3, w: 12.1, h: 0.3, isTextBox: true, margin: 0, valign: "top",
+       fontFace: BODY, fontSize: 10, lineSpacingMultiple: 1.0 });
+
+  s.addText("Calendar years", { x: 0.6, y: 3.68, w: 5.6, h: 0.28, isTextBox: true,
     margin: 0, fontFace: BODY, fontSize: 13, bold: true, color: NAVY });
-  table(s, 0.6, 3.76, 6.1, ["Year", "Strategy", "Hurdle", "S&P 500"],
+  table(s, 0.6, 4.0, 6.1, ["Year", "Strategy", "Hurdle", "S&P 500"],
     years.map(r => {
       const parts = r.value.split("/").map(v => v.trim());
       return [r.metric, parts[0], parts[1], parts[2]];
     }), [1.3, 1.6, 1.6, 1.6], 10);
 
-  s.addText("Where the return came from", { x: 7.1, y: 3.45, w: 5.6, h: 0.28,
+  s.addText("Where the return came from", { x: 7.1, y: 3.68, w: 5.6, h: 0.28,
     isTextBox: true, margin: 0, fontFace: BODY, fontSize: 13, bold: true, color: NAVY });
-  table(s, 7.1, 3.76, 5.6, ["Leg, measured against the eligible universe", "2021-22", "2023-26"], [
+  table(s, 7.1, 4.0, 5.6, ["Leg, measured against the eligible universe", "2021-22", "2023-26"], [
     ["Long leg excess", LA("2021-22", "long leg"), LA("2023-26", "long leg")],
     ["Long leg t-statistic", LAn("2021-22", "long leg").replace("t ", ""),
                              LAn("2023-26", "long leg").replace("t ", "")],
@@ -522,16 +532,18 @@ function fig(s, name, x, y, w, h) {
      LA("2021-22", "short leg"), LA("2023-26", "short leg")],
     ["Short leg t-statistic", LAn("2021-22", "short leg").replace("t ", ""),
                               LAn("2023-26", "short leg").replace("t ", "")],
-  ], [3.0, 1.3, 1.3], 9.5);
+  ], [3.0, 1.3, 1.3], 9);
   s.addText("Raw contribution conflates a rising market with poor selection. Measured "
           + "against the universe we could actually trade, the legs take turns: the "
           + "short book carried 2021-22, the long book carries 2023-26.", {
-    x: 7.1, y: 5.0, w: 5.6, h: 0.8, isTextBox: true, margin: 0,
-    fontFace: BODY, fontSize: 10, italic: true, color: INK, lineSpacingMultiple: 1.05 });
+    x: 7.1, y: 5.32, w: 5.6, h: 0.62, isTextBox: true, margin: 0,
+    fontFace: BODY, fontSize: 9, italic: true, color: INK, lineSpacingMultiple: 1.0 });
 
-  fig(s, "histogram", 7.1, 5.72, 5.6, 1.62);
-  s.addNotes("2024 is the only year that trails the hurdle. 2022's +38% coincides with "
-           + "a -19% market and is the period we treat as non-repeatable.");
+  fig(s, "histogram", 7.1, 5.96, 5.6, 1.44);
+  const y22 = years.find(r => r.metric === "2022").value.split("/").map(x => x.trim());
+  s.addNotes("2024 is the only year that trails the hurdle. 2022's " + y22[0]
+           + " coincides with a " + y22[2] + " market and is the period we treat "
+           + "as non-repeatable.");
 }
 
 // =========================================================== SLIDE 5 ========
@@ -773,8 +785,10 @@ appendix("Where the alpha came from, and why it moved",
       "Splitting the short book by market cap, price and volatility, EVERY bucket flips "
         + "positive to negative. No screen repairs it: dropping the extreme-volatility "
         + "names would have cost 18.8pp of the 2021-22 gain to recover 3.7pp of the later loss.",
-      "The 2021-22 short alpha survives sector adjustment almost intact (-26.90% vs "
-        + "-25.62%), so it was stock selection inside sectors, not a bet against technology.",
+      "The 2021-22 short alpha survives sector adjustment intact: "
+        + LA("2021-22", "short leg excess") + " against the whole universe and "
+        + LA("2021-22", "short leg excess, sector-matched") + " against its own "
+        + "sectors. It was stock selection inside sectors, not a bet against technology.",
     ], 11);
     s.addShape(pres.ShapeType.roundRect, { x: 8.1, y: 1.74, w: 4.6, h: 2.5,
       fill: { color: TINT }, line: { color: TINT }, rectRadius: 0.06 });
