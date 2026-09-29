@@ -30,9 +30,9 @@ const GREY = "6B7280";
 const INK = "1A1A1A";
 const TINT = "F2F5FC";
 
-// Team registration. Fill TEAM_NAME in before submitting: it is deliberately
-// loud rather than blank so it cannot be shipped unnoticed.
-const TEAM_NAME = "[TEAM NAME - FILL IN]";
+// Team registration. verify_submission.py fails if a placeholder survives here,
+// which is why this was loud rather than blank until the name arrived.
+const TEAM_NAME = "Mont Royal Carlo";
 const TEAM_MEMBERS = ["Junhong Zhou", "Tony Tran", "Faig Haji", "Bohan Zhang",
                       "Alex Zhao"];
 
