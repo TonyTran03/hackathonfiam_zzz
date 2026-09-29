@@ -65,6 +65,21 @@ const pack = readCsv("deck_pack.csv");
 const holdings = readCsv("top_holdings.csv");
 const contrib = readCsv("contributors.csv");
 const robust = readCsv("robustness.csv");
+// Leg attribution, recomputed on the submitted book by 16_leg_attribution.py.
+// These four numbers used to be literals carried over from an earlier build,
+// which is exactly the drift the rest of this file exists to prevent.
+const legatt = readCsv("leg_attribution.csv");
+function LA(period, needle) {
+  const h = legatt.find(r => r.period === period
+                        && r.metric.toLowerCase().includes(needle.toLowerCase()));
+  if (!h) throw new Error("leg_attribution.csv has no " + period + " / " + needle);
+  return h.value.trim();
+}
+function LAn(period, needle) {
+  const h = legatt.find(r => r.period === period
+                        && r.metric.toLowerCase().includes(needle.toLowerCase()));
+  return h && h.note ? h.note.trim() : "";
+}
 
 /** Look a metric up by a substring of its label; fails loudly if absent. */
 function M(needle, section) {
@@ -496,10 +511,13 @@ function fig(s, name, x, y, w, h) {
   s.addText("Where the return came from", { x: 7.1, y: 3.45, w: 5.6, h: 0.28,
     isTextBox: true, margin: 0, fontFace: BODY, fontSize: 13, bold: true, color: NAVY });
   table(s, 7.1, 3.76, 5.6, ["Leg, measured against the eligible universe", "2021-22", "2023-26"], [
-    ["Long leg excess", "-3.07%", "+8.81%"],
-    ["Long leg t-statistic", "-0.5", "+2.4"],
-    ["Short leg excess (negative is good)", "-29.35%", "-1.61%"],
-    ["Short leg t-statistic", "-2.5", "-0.2"],
+    ["Long leg excess", LA("2021-22", "long leg"), LA("2023-26", "long leg")],
+    ["Long leg t-statistic", LAn("2021-22", "long leg").replace("t ", ""),
+                             LAn("2023-26", "long leg").replace("t ", "")],
+    ["Short leg excess (negative is good)",
+     LA("2021-22", "short leg"), LA("2023-26", "short leg")],
+    ["Short leg t-statistic", LAn("2021-22", "short leg").replace("t ", ""),
+                              LAn("2023-26", "short leg").replace("t ", "")],
   ], [3.0, 1.3, 1.3], 9.5);
   s.addText("Raw contribution conflates a rising market with poor selection. Measured "
           + "against the universe we could actually trade, the legs take turns: the "
@@ -584,13 +602,19 @@ function fig(s, name, x, y, w, h) {
     isTextBox: true, margin: 0, fontFace: BODY, fontSize: 13, bold: true, color: NAVY });
   table(s, 0.6, 4.59, 6.2, ["", "Short leg", "Long leg"], [
     ["Median market cap", M("median market cap, short leg"), note("median market cap, short leg").replace("long leg ", "")],
-    ["Median daily dollar volume", M("median daily dollar volume"), note("median daily dollar volume").replace("long leg ", "")],
-    ["Median price", M("median price, short leg"), "-"],
+    ["Median daily dollar volume", M("median daily dollar volume"),
+     note("median daily dollar volume").replace("long leg ", "").split(" -- ")[0]],
+    ["Median monthly dollar volume", M("median monthly dollar volume"),
+     note("median monthly dollar volume").replace("long leg ", "")],
+    ["Median price", M("median price, short leg"),
+     note("median price, short leg").replace("long leg ", "")],
     ["Small cap or below", M("share of short leg in small caps"), "nano/micro screened out"],
   ], [2.5, 1.85, 1.85], 9.5);
-  caption(s, 0.6, 6.0, 6.2,
-    "The short book is more liquid than the long book. The unscreened version had a "
-    + "$50m median cap and a $2.63 median price.");
+  caption(s, 0.6, 6.42, 7.4,
+    "Dollar volume is the trailing 126-day daily average; the monthly row is the "
+    + "month's total, and the two differ by roughly the number of trading days. The "
+    + "short book is more liquid than the long book on both. The unscreened version "
+    + "had a $50m median cap and a $2.63 median price.");
 
   fig(s, "underwater", 7.1, 1.7, 5.6, 2.25);
   fig(s, "rolling_ir", 7.1, 4.15, 5.6, 2.6);
@@ -628,8 +652,9 @@ function fig(s, name, x, y, w, h) {
         + R("market + size + value + momentum") + "/yr, "
         + Rnote("market + size + value + momentum") + ". Only value loads at all; the "
         + "rest are indistinguishable from zero.",
-      "The long leg has genuine selection skill since 2023: +8.81% over the eligible "
-        + "universe, t=+2.4 across 44 months.",
+      "The long leg has genuine selection skill since 2023: "
+        + LA("2023-26", "long leg") + " over the eligible universe, "
+        + LAn("2023-26", "long leg") + " across 44 months.",
     ]],
     ["What did not", "F3C6C0", [
       "The short leg's edge was one regime. In the pre-test validation window it "
@@ -644,9 +669,11 @@ function fig(s, name, x, y, w, h) {
       "The second half of the window runs at " + R("second half") + " against "
         + R("first half") + ". The later figure is the more honest forward expectation.",
       "The short book's job is neutrality, not return. We would size it as a hedge.",
-      "Sector neutrality: 90% of capital sits in sector bets nobody chose. Tested four "
-        + "ways, reported as untested rather than rejected - our sample cannot resolve "
-        + "an effect that size. Appendix.",
+      "Sector neutrality: 90% of capital sits in sector bets nobody chose. Every arm "
+        + "we tested beats the book on the test period and LOSES to it on the only "
+        + "window the model never saw (-0.66 against -1.05 net of costs), so we report "
+        + "it as untested rather than rejected and did not change the book on evidence "
+        + "our sample cannot resolve. Appendix.",
       "We evaluated the test period 13 times. Nine followed a diagnosed defect.",
     ]],
   ];
@@ -724,10 +751,17 @@ appendix("Where the alpha came from, and why it moved",
   s => {
     table(s, 0.6, 1.74, 7.1,
       ["Period", "Universe", "Long vs universe", "Short vs universe"], [
-      ["2019-20 (pre-test validation)", "+25.03%", "+0.85%  (t +0.1)", "+5.42%  (t +1.1)"],
-      ["2021-22", "-1.57%", "-3.07%  (t -0.5)", "-29.35%  (t -2.5)"],
-      ["2023-26", "+12.05%", "+8.81%  (t +2.4)", "-1.61%  (t -0.2)"],
-    ], [2.55, 1.25, 1.65, 1.65], 10);
+      ["2019-20 (validation build)", "+25.03%", "+0.85%  (t +0.1)", "+5.42%  (t +1.1)"],
+      ["2021-22", LA("2021-22", "universe"),
+       LA("2021-22", "long leg") + "  (" + LAn("2021-22", "long leg") + ")",
+       LA("2021-22", "short leg") + "  (" + LAn("2021-22", "short leg") + ")"],
+      ["2023-26", LA("2023-26", "universe"),
+       LA("2023-26", "long leg") + "  (" + LAn("2023-26", "long leg") + ")",
+       LA("2023-26", "short leg") + "  (" + LAn("2023-26", "short leg") + ")"],
+      ["Full period", LA("full period", "universe"),
+       LA("full period", "long leg") + "  (" + LAn("full period", "long leg") + ")",
+       LA("full period", "short leg") + "  (" + LAn("full period", "short leg") + ")"],
+    ], [2.55, 1.25, 1.65, 1.65], 9.5);
     bullets(s, 0.6, 3.2, 7.1, [
       "For the short leg a negative number is good: the names we shorted underperformed.",
       "The only window with short-side skill is 2021-22, the speculative unwind. In the "
@@ -763,6 +797,8 @@ appendix("Text data: three tests, one null, one exception",
        "10 filing columns take 1.71% against 6.37% expected"],
       ["Item 5.02 split by triage",
        "Aggregate +0.046% (t +0.5) -> abrupt -0.640% (t -1.9)"],
+      ["Coverage checked against delistings",
+       "Survivorship-linked: see below"],
     ], [3.5, 3.9], 10.5);
     bullets(s, 0.6, 3.5, 7.4, [
       "The naive t-statistic was inflated in all of these. Stocks within a month move "
@@ -774,6 +810,22 @@ appendix("Text data: three tests, one null, one exception",
         + "accurate it is.",
       "The triage uses no language model. Rules were read off the documents; --sample "
         + "prints both sides for inspection and sorted 8 of 8 correctly on the sample shown.",
+      "THE CORPUS IS SURVIVORSHIP-LINKED, and we found it while trying to confirm that "
+        + "our delisted holdings were acquisitions. Of the 59 positions that lose their "
+        + "forward return, only 18 appear in the 8-K data at all - 0 of 11 that vanish "
+        + "in 2021, 0 of 10 in 2022, 0 of 12 in 2023, 0 of 7 in 2024, then 10 of 11 in "
+        + "2025 and 8 of 8 in 2026. Dunkin' Brands, Fitbit, Varian Medical Systems, "
+        + "Alexion Pharmaceuticals, Maxim Integrated, Luminex and Raven Industries each "
+        + "filed 8-Ks throughout 2015-2020 and have ZERO filings in a dataset that spans "
+        + "2015-2026. The company list was built from identifiers that still resolve "
+        + "today, so anything acquired before roughly 2025 is simply absent.",
+      "That makes missingness itself a forward-looking variable: a stock-month with no "
+        + "8-K record is 12.1% likely to vanish within twelve months against 1.2% if "
+        + "covered (t +23.8), and it predicts next-month return at -0.24%/month "
+        + "(t -2.22, Fama-MacBeth). A tree splitting on missingness can therefore see "
+        + "survival information that was not observable at the rebalance date. It is "
+        + "the strongest argument for the exclusion we had already made on other "
+        + "grounds, and it is the most useful thing the text data told us.",
     ], 11);
     s.addShape(pres.ShapeType.roundRect, { x: 8.4, y: 1.74, w: 4.3, h: 3.0,
       fill: { color: TINT }, line: { color: TINT }, rectRadius: 0.06 });
@@ -807,7 +859,8 @@ appendix("Robustness", "Six tests, run before the deck was written", s => {
           .map(r => [r.metric, r.value, Rnote(r.metric)]),
     [2.2, 1.7, 1.8], 10);
   bullets(s, 7.0, 3.0, 5.7, [
-    "Loadings on size and value are insignificant, and the three-factor regression "
+    "Of the four factor loadings only value is even borderline (t +2.0); market, "
+    + "size and momentum are indistinguishable from zero, and the regression "
       + "leaves most of the variation unexplained (" + Rnote("market + size + value")
       + ").",
     "Delisting marks: positions with no realised return are marked at zero in the base "

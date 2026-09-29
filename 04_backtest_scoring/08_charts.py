@@ -30,6 +30,7 @@ import statsmodels.formula.api as smf
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from common import config as C
+from common.labels import pretty_name
 
 FIGS = C.ROOT / "05_submission" / "figures"
 RETURNS = C.ROOT / "05_submission" / "portfolio_returns.csv"
@@ -151,7 +152,11 @@ def contributors(h):
 
     fig, ax = plt.subplots(figsize=(7, 4.4))
     show = pd.concat([worst, best.iloc[::-1]])
-    labels = ["%s  %s" % (r.ticker, str(r.company_name)[:28]) for r in show.itertuples()]
+    # Full names, formatted the way the rules ask. The chart used to truncate at
+    # 28 characters and print CRSP's raw style, so "PRAXIS PRECISION MEDICINES
+    # INC" appeared as "PRAXIS PRECISION MEDICINES I".
+    labels = ["%s  %s" % (r.ticker, pretty_name(r.company_name))
+              for r in show.itertuples()]
     ax.barh(range(len(show)), 100 * show["pnl"],
             color=[MARKET if v < 0 else STRAT for v in show["pnl"]])
     ax.set_yticks(range(len(show)))
