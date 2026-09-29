@@ -114,6 +114,28 @@ def main(holdings_path=None):
     warns = sum(f.level == "WARN" for f in findings)
     print("\n%d rule failures, %d house-standard failures (reported, non-blocking), %d warnings"
           % (rule_fail, house_fail, warns))
+
+    # Write the tally out so the deck quotes the gate instead of paraphrasing
+    # it. The deck said "0 failures" while the gate was reporting one
+    # house-standard breach. Those are different counts and the slide needs to
+    # be able to say so without anyone retyping either of them.
+    summary = [
+        {"metric": "rule failures", "value": "%d" % rule_fail,
+         "note": "competition rules; any one of these blocks the chain"},
+        {"metric": "house-standard failures", "value": "%d" % house_fail,
+         "note": "our own thresholds, reported and non-blocking"},
+        {"metric": "warnings", "value": "%d" % warns, "note": ""},
+        {"metric": "checks run", "value": "%d" % len(findings), "note": ""},
+    ]
+    for f in findings:
+        if f.level == "FAIL":
+            summary.append({"metric": "FAIL: %s" % f.check,
+                            "value": "rule" if f.rule else "house standard",
+                            "note": f.detail})
+    sub = C.ROOT / "05_submission"
+    if sub.exists():
+        pd.DataFrame(summary).to_csv(sub / "compliance_summary.csv", index=False)
+        print("  summary written to 05_submission/compliance_summary.csv")
     return 1 if rule_fail else 0
 
 

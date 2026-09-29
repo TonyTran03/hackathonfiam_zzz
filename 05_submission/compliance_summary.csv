@@ -1,0 +1,6 @@
+metric,value,note
+rule failures,0,competition rules; any one of these blocks the chain
+house-standard failures,1,"our own thresholds, reported and non-blocking"
+warnings,6,
+checks run,21,
+"FAIL: beta neutrality (house standard, not a rule)",house standard,1 of 68 months carry a beta-weighted net beyond +0.30 (worst +0.310 in 2025-08) -- this is a directional book

@@ -57,6 +57,19 @@ explains why -30% is a conservative stress here rather than a likely case.
 `holdings.csv` — `DATE`, `PERMNO`, `TICKER`, `COMPANY_NAME`, `WEIGHT`, one row
 per position per month, 13,600 rows over 68 months.
 
+## Checking the package before submitting
+
+    python run_checks.py 05_submission/holdings.csv   # does the STRATEGY obey the rules
+    python 05_submission/verify_submission.py         # is the PACKAGE complete and consistent
+
+Two different questions. The first asks whether the book breaks a competition
+rule or a look-ahead rule and exits non-zero if it does; it also writes
+`compliance_summary.csv`, which the deck quotes rather than paraphrasing. The
+second asks whether the five required items are present, whether holdings.csv
+has the columns and coverage the rules specify, and whether the deck, the
+returns series and the holdings all describe the same book -- the question that
+catches a stale file rather than a bad strategy.
+
 ## Checking the deck against itself
 
     node 05_submission/build_deck.js

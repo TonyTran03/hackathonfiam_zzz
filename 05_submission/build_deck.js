@@ -76,6 +76,19 @@ const cashconv = readCsv("cash_convention.csv");
 // 8-K coverage measured across the whole panel by 18_filing_coverage.py, so
 // the appendix's survivorship point does not depend on which book is current.
 const filecov = readCsv("filing_coverage.csv");
+// The compliance gate's own tally. The deck used to say "0 failures" while the
+// gate reported one house-standard breach; those are different counts, so the
+// slide reads both instead of summarising them into one.
+const comply = readCsv("compliance_summary.csv");
+function CMP(needle) {
+  const h = comply.find(r => r.metric.toLowerCase().includes(needle.toLowerCase()));
+  if (!h) throw new Error("compliance_summary.csv has no metric matching: " + needle);
+  return h.value.trim();
+}
+function houseFail() {
+  const h = comply.find(r => r.metric.startsWith("FAIL:") && r.value === "house standard");
+  return h ? h.note.trim().replace(/ -- this is a directional book$/, ".") : "none.";
+}
 function FC(needle) {
   const h = filecov.find(r => r.metric.toLowerCase().includes(needle.toLowerCase()));
   if (!h) throw new Error("filing_coverage.csv has no metric matching: " + needle);
@@ -977,16 +990,27 @@ appendix("Research log and multiple testing",
       fill: { color: TINT }, line: { color: TINT }, rectRadius: 0.06 });
     s.addText("Reproducibility", { x: 0.85, y: 5.16, w: 11.6, h: 0.26, isTextBox: true,
       margin: 0, fontFace: BODY, fontSize: 11.5, bold: true, color: NAVY });
-    s.addText("MAIN.py runs the whole chain from the supplied parquet files to the "
-            + "compliance gate and the exhibits on these slides, and exits non-zero if "
-            + "any rule is broken. 22 automatic checks cover look-ahead (predictor list, "
-            + "split keying, preprocessing fit window, cross-fold selection) and the "
-            + "trading criteria (100-500 names, gross <= 200%, net inside +/-50%, both "
-            + "legs, coverage, tradability). A separate test feeds the checker 21 "
-            + "deliberately broken inputs and asserts each is caught; all 21 fire. The "
-            + "traded book records 0 failures across all 68 months.", {
+    s.addText([
+      { text: "MAIN.py runs the whole chain from the supplied parquet files to the "
+             + "compliance gate and the exhibits on these slides, and exits non-zero "
+             + "if any rule is broken. " + CMP("checks run") + " automatic checks "
+             + "cover look-ahead (predictor list, split keying, preprocessing fit "
+             + "window, cross-fold selection) and the trading criteria (100-500 "
+             + "names, gross <= 200%, net inside +/-50%, both legs, coverage, "
+             + "tradability). A separate test feeds the checker 21 deliberately "
+             + "broken inputs and asserts each is caught; all 21 fire.",
+        options: { breakLine: true, color: INK } },
+      { text: "The traded book records " + CMP("rule failures")
+             + " rule failures across all 68 months. It does breach one standard we "
+             + "set ourselves and the rules do not: " + houseFail()
+             + " The beta control sizes the legs to offset the gap between estimated "
+             + "and realised leg beta, so an ex-ante tilt past the threshold can be "
+             + "the construction working as designed - but we report it rather than "
+             + "move the threshold to fit.",
+        options: { color: INK } },
+    ], {
       x: 0.85, y: 5.44, w: 11.6, h: 1.0, isTextBox: true, margin: 0, valign: "top",
-      fontFace: BODY, fontSize: 10.5, color: INK, lineSpacingMultiple: 1.02 });
+      fontFace: BODY, fontSize: 10, color: INK, lineSpacingMultiple: 1.02 });
   });
 
 // --------------------------------------------------- APPENDIX 5 ------------
