@@ -419,28 +419,32 @@ function fig(s, name, x, y, w, h) {
     fontFace: BODY, fontSize: 12.5, bold: true, color: NAVY });
   bullets(s, 0.6, 1.86, 5.9, [
     "Gradient-boosted trees, refit annually on an expanding window with a rolling "
-      + "two-year validation block, split by target month. Chosen over the linear "
-      + "models on validation rank correlation, fold by fold.",
+      + "two-year validation block, split by target month. Trees won four of the six "
+      + "folds; Ridge joined the blend in 2022 and 2023, on that fold's validation "
+      + "rank correlation.",
     "Missing values are NOT imputed for the trees. Missingness is informative - stocks "
       + "missing the most characteristics have a median cap of $282m against $1,687m.",
     "The target is demeaned within each month. Fitting raw returns stopped after ONE "
       + "boosting round: training averaged +0.27%/month against +2.52% in validation.",
     "Model choice is made inside each fold on that fold's validation block only.",
-  ], 10);
+    "Weights are fractions of NAV, summing to 200% gross and " + M("average net exposure")
+      + " net. Short proceeds sit in 3-month T-bills, which is why the benchmark is "
+      + "cash plus 4% and why the cash leg cancels out of the active return.",
+  ], 9.5);
 
   s.addText("Out-of-sample R-squared, benchmarked against zero", {
-    x: 0.6, y: 4.02, w: 5.9, h: 0.26, isTextBox: true, margin: 0,
+    x: 0.6, y: 4.22, w: 5.9, h: 0.26, isTextBox: true, margin: 0,
     fontFace: BODY, fontSize: 11.5, bold: true, color: NAVY });
-  table(s, 0.6, 4.3, 5.9, ["Model", "OOS R2", "Monthly IC"], [
+  table(s, 0.6, 4.5, 5.9, ["Model", "OOS R2", "Monthly IC"], [
     ["Gradient-boosted trees", "+0.3956%", "+0.1354"],
     ["Ridge", "+0.0278%", "+0.1193"],
     ["OLS", "-0.0068%", "+0.0806"],
     ["Lasso / Elastic Net", "negative", "+0.08"],
   ], [2.7, 1.6, 1.6], 9.5);
-  caption(s, 0.6, 5.82, 5.9,
+  caption(s, 0.6, 5.88, 5.9,
     "The rules note 1-2% is typical even for neural networks; a large positive number "
-    + "would mean a leak, not skill. The 8-K corpus was measured and excluded - three "
-    + "independent tests, one null, one exception, in the appendix.");
+    + "would mean a leak, not skill. The 8-K corpus was measured and excluded - the "
+    + "appendix has all three tests.");
 
   // --- which characteristics, grouped and glossed -------------------------
   s.addText("Which characteristics the model uses", {
@@ -461,7 +465,7 @@ function fig(s, name, x, y, w, h) {
     [1.75, 3.1, 1.1], 8);
 
   // --- the agentic question, answered plainly -----------------------------
-  s.addShape(pres.ShapeType.roundRect, { x: 0.6, y: 6.34, w: 12.1, h: 1.0,
+  s.addShape(pres.ShapeType.roundRect, { x: 0.6, y: 6.44, w: 12.1, h: 0.94,
     fill: { color: TINT }, line: { color: TINT }, rectRadius: 0.05 });
   s.addText([
     { text: "Where AI was used, and where it deliberately was not.  ",
@@ -479,7 +483,7 @@ function fig(s, name, x, y, w, h) {
            + "window before it was allowed near the book, and the ones that failed "
            + "there are reported in the appendix rather than dropped.",
       options: { color: INK } },
-  ], { x: 0.82, y: 6.44, w: 11.66, h: 0.84, isTextBox: true, margin: 0, valign: "top",
+  ], { x: 0.82, y: 6.53, w: 11.66, h: 0.8, isTextBox: true, margin: 0, valign: "top",
        fontFace: BODY, fontSize: 8.5, lineSpacingMultiple: 0.98 });
 
   s.addNotes("Page 3 answers three of the brief's questions: why this model, how "
