@@ -69,6 +69,19 @@ const robust = readCsv("robustness.csv");
 // These four numbers used to be literals carried over from an earlier build,
 // which is exactly the drift the rest of this file exists to prevent.
 const legatt = readCsv("leg_attribution.csv");
+// The cash convention, measured by 17_cash_convention.py rather than asserted.
+// The rules warn that the risk-free rate inside ret_exc need not be the T-bill
+// we benchmark against, so the slide quotes the gap instead of claiming none.
+const cashconv = readCsv("cash_convention.csv");
+function CC(needle) {
+  const h = cashconv.find(r => r.metric.toLowerCase().includes(needle.toLowerCase()));
+  if (!h) throw new Error("cash_convention.csv has no metric matching: " + needle);
+  return h.value.trim();
+}
+function CCn(needle) {
+  const h = cashconv.find(r => r.metric.toLowerCase().includes(needle.toLowerCase()));
+  return h && h.note ? h.note.trim() : "";
+}
 function LA(period, needle) {
   const h = legatt.find(r => r.period === period
                         && r.metric.toLowerCase().includes(needle.toLowerCase()));
@@ -316,9 +329,13 @@ function fig(s, name, x, y, w, h) {
   ], { x: 0.8, y: 5.35, w: 11.7, h: 0.3, isTextBox: true, margin: 0,
        fontFace: BODY, fontSize: 12 });
 
-  s.addText("The alpha changed legs mid-period. 2021-22 came almost entirely from the "
-          + "short book during the speculative unwind; since 2023 it has come from the "
-          + "long book. We do not claim the first is repeatable.",
+  s.addText("Measured against the universe it picks from, the long leg is positive in "
+          + "both halves of the window (" + LA("full period", "long leg excess")
+          + " over the full period, " + LAn("full period", "long leg excess")
+          + "). The short leg's own contribution is concentrated in the 2021-22 "
+          + "unwind (" + LA("2021-22", "short leg excess") + ") and is "
+          + "indistinguishable from zero since. We treat it as the hedge, not as a "
+          + "second source of alpha.",
     { x: 0.8, y: 5.85, w: 11.7, h: 0.75, isTextBox: true, margin: 0,
       fontFace: BODY, fontSize: 12, italic: true, color: ICE });
   // The brief registers the team through the deck and the CVs, so the title page
@@ -428,20 +445,26 @@ function fig(s, name, x, y, w, h) {
       + "boosting round: training averaged +0.27%/month against +2.52% in validation.",
     "Model choice is made inside each fold on that fold's validation block only.",
     "Weights are fractions of NAV, summing to 200% gross and " + M("average net exposure")
-      + " net. Short proceeds sit in 3-month T-bills, which is why the benchmark is "
-      + "cash plus 4% and why the cash leg cancels out of the active return.",
+      + " net. Returns are built as spread = sum of weight x ret_exc_lead1m, total = "
+      + "3M T-bill + spread, hurdle = 3M T-bill + 4%/12. The rules warn not to assume "
+      + "the risk-free rate inside ret_exc is the T-bill, so we measured it: backed "
+      + "out of the panel it runs " + CC("pipeline's own rf")
+      + " against the T-bill's " + CC("3-month T-bill") + ", and at our net exposure "
+      + "that residual is " + CC("error, annualised") + "/yr, moving the information "
+      + "ratio by " + CCn("residual removed").replace("changes the headline by ", "")
+      + ". Reported, not assumed.",
   ], 9.5);
 
   s.addText("Out-of-sample R-squared, benchmarked against zero", {
-    x: 0.6, y: 4.22, w: 5.9, h: 0.26, isTextBox: true, margin: 0,
+    x: 0.6, y: 4.62, w: 5.9, h: 0.26, isTextBox: true, margin: 0,
     fontFace: BODY, fontSize: 11.5, bold: true, color: NAVY });
-  table(s, 0.6, 4.5, 5.9, ["Model", "OOS R2", "Monthly IC"], [
+  table(s, 0.6, 4.9, 5.9, ["Model", "OOS R2", "Monthly IC"], [
     ["Gradient-boosted trees", "+0.3956%", "+0.1354"],
     ["Ridge", "+0.0278%", "+0.1193"],
     ["OLS", "-0.0068%", "+0.0806"],
     ["Lasso / Elastic Net", "negative", "+0.08"],
-  ], [2.7, 1.6, 1.6], 9.5);
-  caption(s, 0.6, 5.88, 5.9,
+  ], [2.7, 1.6, 1.6], 9);
+  caption(s, 0.6, 6.16, 5.9,
     "The rules note 1-2% is typical even for neural networks; a large positive number "
     + "would mean a leak, not skill. The 8-K corpus was measured and excluded - the "
     + "appendix has all three tests.");
@@ -465,7 +488,7 @@ function fig(s, name, x, y, w, h) {
     [1.75, 3.1, 1.1], 8);
 
   // --- the agentic question, answered plainly -----------------------------
-  s.addShape(pres.ShapeType.roundRect, { x: 0.6, y: 6.44, w: 12.1, h: 0.94,
+  s.addShape(pres.ShapeType.roundRect, { x: 0.6, y: 6.7, w: 12.1, h: 0.72,
     fill: { color: TINT }, line: { color: TINT }, rectRadius: 0.05 });
   s.addText([
     { text: "Where AI was used, and where it deliberately was not.  ",
@@ -483,7 +506,7 @@ function fig(s, name, x, y, w, h) {
            + "window before it was allowed near the book, and the ones that failed "
            + "there are reported in the appendix rather than dropped.",
       options: { color: INK } },
-  ], { x: 0.82, y: 6.53, w: 11.66, h: 0.8, isTextBox: true, margin: 0, valign: "top",
+  ], { x: 0.82, y: 6.77, w: 11.66, h: 0.6, isTextBox: true, margin: 0, valign: "top",
        fontFace: BODY, fontSize: 8.5, lineSpacingMultiple: 0.98 });
 
   s.addNotes("Page 3 answers three of the brief's questions: why this model, how "
@@ -534,8 +557,9 @@ function fig(s, name, x, y, w, h) {
                               LAn("2023-26", "short leg").replace("t ", "")],
   ], [3.0, 1.3, 1.3], 9);
   s.addText("Raw contribution conflates a rising market with poor selection. Measured "
-          + "against the universe we could actually trade, the legs take turns: the "
-          + "short book carried 2021-22, the long book carries 2023-26.", {
+          + "against the universe we could actually trade, the long leg is positive in "
+          + "both periods; the short leg's own edge sits in the 2021-22 unwind and is "
+          + "flat afterwards.", {
     x: 7.1, y: 5.32, w: 5.6, h: 0.62, isTextBox: true, margin: 0,
     fontFace: BODY, fontSize: 9, italic: true, color: INK, lineSpacingMultiple: 1.0 });
 
@@ -668,9 +692,11 @@ function fig(s, name, x, y, w, h) {
         + R("market + size + value + momentum") + "/yr, "
         + Rnote("market + size + value + momentum") + ". Only value loads at all; the "
         + "rest are indistinguishable from zero.",
-      "The long leg has genuine selection skill since 2023: "
-        + LA("2023-26", "long leg") + " over the eligible universe, "
-        + LAn("2023-26", "long leg") + " across 44 months.",
+      "The long leg is the steady part: " + LA("full period", "long leg excess")
+        + " over the eligible universe across 68 months, "
+        + LAn("full period", "long leg excess") + ", and positive in both halves ("
+        + LA("2021-22", "long leg excess") + " then "
+        + LA("2023-26", "long leg excess") + ").",
     ]],
     ["What did not", "F3C6C0", [
       "The short leg's edge was one regime. In the pre-test validation window it "
@@ -795,10 +821,13 @@ appendix("Where the alpha came from, and why it moved",
     s.addText("Applying the same standard to both legs", {
       x: 8.32, y: 1.9, w: 4.2, h: 0.5, isTextBox: true, margin: 0,
       fontFace: BODY, fontSize: 11.5, bold: true, color: NAVY });
-    s.addText("The long leg also shows skill in only one regime. If we discount the "
-            + "short result as regime-specific, the same scepticism applies to the long "
-            + "one. The framing we prefer is that the legs take turns: shorts pay when "
-            + "speculative names unwind, longs pay when quality leads.", {
+    s.addText("Recomputed on the submitted book, the two legs are not symmetric. The "
+            + "long leg is positive in both periods and clears its own standard error "
+            + "over the full window; the short leg's edge is confined to 2021-22. So "
+            + "the framing is not that they take turns - it is that the long leg "
+            + "carries the alpha and the short leg is a hedge that happened to pay "
+            + "during the unwind. Sizing it as a second alpha source would be "
+            + "reading one regime as a rule.", {
       x: 8.32, y: 2.36, w: 4.2, h: 1.7, isTextBox: true, margin: 0, valign: "top",
       fontFace: BODY, fontSize: 10.5, color: INK, lineSpacingMultiple: 1.05 });
   });

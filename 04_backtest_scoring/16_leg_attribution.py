@@ -130,8 +130,9 @@ def main():
         print("  %-14s %7s %13s %9.2f%% sector   %8.2f%% sector"
               % ("", "", "", 100 * lsa, 100 * ssa))
 
-    print("\n  The edge changes legs: the short leg carries 2021-22 and is")
-    print("  indistinguishable from zero afterwards; the long leg is the reverse.")
+    print("\n  The long leg is positive in both periods and over the full window;")
+    print("  the short leg's own contribution is concentrated in the 2021-22")
+    print("  unwind and is indistinguishable from zero afterwards.")
     pd.DataFrame(rows).to_csv(OUT, index=False)
     print("\nwrote %s" % OUT.relative_to(C.ROOT))
     return 0

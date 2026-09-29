@@ -1,0 +1,11 @@
+metric,value,note
+implied rf is constant within a month,max sd 5.61e-17,"one series, not per-stock"
+months compared,68,
+"3-month T-bill, annualised",3.281%,
+"pipeline's own rf, annualised",3.111%,
+"difference, annualised",+0.170%,range -1.033% to +1.656%
+average net exposure,+12.5%,
+error in monthly return,+0.0027% per month,net exposure x the rate difference
+"error, annualised",+0.033%,worst month +0.041%
+information ratio as reported,+0.8834,
+information ratio with the residual removed,+0.8808,changes the headline by -0.0026
