@@ -41,6 +41,7 @@ REPORTS = (
     "04_backtest_scoring/15_neutrality_check.py",
     "04_backtest_scoring/16_leg_attribution.py",
     "04_backtest_scoring/17_cash_convention.py",
+    "04_backtest_scoring/18_filing_coverage.py",
     "04_backtest_scoring/10_daily_risk.py",
 )
 

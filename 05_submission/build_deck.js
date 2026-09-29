@@ -34,7 +34,7 @@ const TINT = "F2F5FC";
 // loud rather than blank so it cannot be shipped unnoticed.
 const TEAM_NAME = "[TEAM NAME - FILL IN]";
 const TEAM_MEMBERS = ["Junhong Zhou", "Tony Tran", "Faig Haji", "Bohan Zhang",
-                      "Alex [surname]"];
+                      "Alex Zhao"];
 
 const HEAD = "Cambria";
 const BODY = "Calibri";
@@ -73,6 +73,18 @@ const legatt = readCsv("leg_attribution.csv");
 // The rules warn that the risk-free rate inside ret_exc need not be the T-bill
 // we benchmark against, so the slide quotes the gap instead of claiming none.
 const cashconv = readCsv("cash_convention.csv");
+// 8-K coverage measured across the whole panel by 18_filing_coverage.py, so
+// the appendix's survivorship point does not depend on which book is current.
+const filecov = readCsv("filing_coverage.csv");
+function FC(needle) {
+  const h = filecov.find(r => r.metric.toLowerCase().includes(needle.toLowerCase()));
+  if (!h) throw new Error("filing_coverage.csv has no metric matching: " + needle);
+  return h.value.trim();
+}
+function FCn(needle) {
+  const h = filecov.find(r => r.metric.toLowerCase().includes(needle.toLowerCase()));
+  return h && h.note ? h.note.trim() : "";
+}
 function CC(needle) {
   const h = cashconv.find(r => r.metric.toLowerCase().includes(needle.toLowerCase()));
   if (!h) throw new Error("cash_convention.csv has no metric matching: " + needle);
@@ -152,9 +164,16 @@ function prettyName(raw) {
     if (i > 0 && small.has(w)) return w.toLowerCase();
     return w.charAt(0) + w.slice(1).toLowerCase();
   }).join(" ")
-   .replace(/Hldgs/g, "Holdings").replace(/Grp/g, "Group")
-   .replace(/Intl/g, "International").replace(/Techs/g, "Technologies")
-   .replace(/Cos/g, "Companies").replace(/Mfg/g, "Manufacturing");
+   // Word boundaries matter here: without them /Cos/ turns "Costco Wholesale"
+   // into "Companiestco Wholesale". They were lost once already, when a sweep
+   // for stray control characters took the \b with them.
+   .replace(/\bHldgs\b/g, "Holdings").replace(/\bGrp\b/g, "Group")
+   .replace(/\bIntl\b/g, "International").replace(/\bTechs\b/g, "Technologies")
+   .replace(/\bCos\b/g, "Companies").replace(/\bMfg\b/g, "Manufacturing")
+   // Capitalisation and hyphens that cannot be inferred from CRSP's all-caps
+   // spelling. Mirrored in common/labels.py so a chart label and a table row
+   // cannot disagree about the same company.
+   .replace(/\bMaxlinear\b/g, "MaxLinear").replace(/\bD Wave\b/g, "D-Wave");
 }
 
 
@@ -650,7 +669,7 @@ function fig(s, name, x, y, w, h) {
      note("median price, short leg").replace("long leg ", "")],
     ["Small cap or below", M("share of short leg in small caps"), "nano/micro screened out"],
   ], [2.5, 1.85, 1.85], 9.5);
-  caption(s, 0.6, 6.42, 7.4,
+  caption(s, 0.6, 6.4, 6.2,
     "Dollar volume is the trailing 126-day daily average; the monthly row is the "
     + "month's total, and the two differ by roughly the number of trading days. The "
     + "short book is more liquid than the long book on both. The unscreened version "
@@ -764,7 +783,7 @@ function fig(s, name, x, y, w, h) {
            + "the clearest evidence the book is not a disguised long.",
       options: { bullet: true, breakLine: true } },
     { text: "2023-25  AI-led concentration in mega-caps. The short edge disappears and "
-           + "the long leg takes over; " + R("2023-25 concentration")
+           + "the long leg carries on; " + R("2023-25 concentration")
            + " over those three years.", options: { bullet: true, breakLine: true } },
     { text: "2026  " + yr("2026")[0] + " against " + yr("2026")[2]
            + " in eight months, with rolling beta drifting to -0.63 by August - the "
@@ -858,14 +877,16 @@ appendix("Text data: three tests, one null, one exception",
       "The triage uses no language model. Rules were read off the documents; --sample "
         + "prints both sides for inspection and sorted 8 of 8 correctly on the sample shown.",
       "THE CORPUS IS SURVIVORSHIP-LINKED, and we found it while trying to confirm that "
-        + "our delisted holdings were acquisitions. Of the 59 positions that lose their "
-        + "forward return, only 18 appear in the 8-K data at all - 0 of 11 that vanish "
-        + "in 2021, 0 of 10 in 2022, 0 of 12 in 2023, 0 of 7 in 2024, then 10 of 11 in "
-        + "2025 and 8 of 8 in 2026. Dunkin' Brands, Fitbit, Varian Medical Systems, "
-        + "Alexion Pharmaceuticals, Maxim Integrated, Luminex and Raven Industries each "
-        + "filed 8-Ks throughout 2015-2020 and have ZERO filings in a dataset that spans "
-        + "2015-2026. The company list was built from identifiers that still resolve "
-        + "today, so anything acquired before roughly 2025 is simply absent.",
+        + "our delisted holdings were acquisitions. The cleanest version of it is "
+        + "panel-wide and does not depend on which book is current: of the stocks "
+        + "still listed at the panel's end, " + FC("still listed") + " ("
+        + FCn("still listed") + "); of those that left before 2025, "
+        + FC("left the panel") + " (" + FCn("left the panel") + "). "
+        + "Dunkin' Brands, Fitbit, Varian Medical Systems, Alexion Pharmaceuticals, "
+        + "Maxim Integrated, Luminex and Raven Industries each filed 8-Ks throughout "
+        + "2015-2020 and have ZERO filings in a corpus spanning 2015-2026. The company "
+        + "list was built from identifiers that still resolve today, so anything "
+        + "acquired before roughly 2025 is simply absent.",
       "That makes missingness itself a forward-looking variable: a stock-month with no "
         + "8-K record is 12.1% likely to vanish within twelve months against 1.2% if "
         + "covered (t +23.8), and it predicts next-month return at -0.24%/month "
@@ -905,11 +926,11 @@ appendix("Robustness", "Six tests, run before the deck was written", s => {
     robust.filter(r => r.section === "attribution")
           .map(r => [r.metric, r.value, Rnote(r.metric)]),
     [2.2, 1.7, 1.8], 10);
-  bullets(s, 7.0, 3.0, 5.7, [
+  bullets(s, 7.0, 3.26, 5.7, [
     "Of the four factor loadings only value is even borderline (t +2.0); market, "
     + "size and momentum are indistinguishable from zero, and the regression "
-      + "leaves most of the variation unexplained (" + Rnote("market + size + value")
-      + ").",
+      + "leaves most of the variation unexplained ("
+      + Rnote("market + size + value + momentum") + ").",
     "Delisting marks: positions with no realised return are marked at zero in the base "
       + "case (" + M("positions affected") + ", " + note("positions affected")
       + "). At Shumway's -30% convention the net information ratio is "

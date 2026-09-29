@@ -22,7 +22,10 @@ _SUFFIX = re.compile(r"\s+(?:3RD|2ND|1ST)\s+NEW$|\s+NEW$|\s+DEL$")
 _ACRONYM = re.compile(r"\b[A-Z0-9](?:\s*&?\s*\b[A-Z0-9]\b){1,4}")
 _EXPAND = [(r"\bHldgs\b", "Holdings"), (r"\bGrp\b", "Group"),
            (r"\bIntl\b", "International"), (r"\bTechs\b", "Technologies"),
-           (r"\bCos\b", "Companies"), (r"\bMfg\b", "Manufacturing")]
+           (r"\bCos\b", "Companies"), (r"\bMfg\b", "Manufacturing"),
+           # Capitalisation and hyphens that cannot be inferred from CRSP's
+           # all-caps spelling. The deck's JavaScript carries the same pair.
+           (r"\bMaxlinear\b", "MaxLinear"), (r"\bD Wave\b", "D-Wave")]
 
 
 def pretty_name(raw):
