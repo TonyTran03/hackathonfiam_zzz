@@ -17,11 +17,12 @@ Open `output/report.html` in a browser. The report works offline: Plotly JavaScr
 
 ## Outputs
 
-- `performance_summary.csv`: Section 9.1 table scaffold with available monthly gross statistics and explicit pending rows. Values are numeric decimals, not formatted percentages.
+- `performance_summary.csv`: Section 9.1 presentation table: 23 rows in prescribed order, four columns, percentages and US$ billion/million as specified. Unavailable values say Pending; non-applicable benchmark cells say n/a. Annualised return is arithmetic; CAGR is separately reported in HTML.
+- `metric_diagnostics.csv`: supplemental raw numeric statistics, statuses and limitations; returns are decimals.
 - `yearly_returns.csv`: compounded gross strategy, benchmark and S&P price returns; net returns blank; 2026 is partial January–August.
 - `exposures_monthly.csv`: recorded target-weight gross/net exposures, nonzero position counts and max absolute position size. Not daily compliance evidence.
 - `average_holdings.csv` and `top_bottom_holdings.csv`: equal-month average signed weights across all 68 months, including zero for absent names; latest observed company labels for display only.
-- `report.html`: four interactive charts with zoom, pan, hover values, legend toggles and PNG export. Performance charts also include date-range controls. Older PNG files are not used.
+- `report.html`: eight numbered Section 9.4 panels: four data exhibits and four missing-data placeholders. Data exhibits support zoom, pan, hover and PNG export. The active chart includes date controls and S&P 500 context. Net annual returns remain pending. Placeholders do not satisfy exhibit requirements. Older PNG files are not used.
 - `exhibit_status.csv`: all eight Section 9.4 requirements with availability and gaps.
 - `validation.json`: input and script hashes, software versions, verification flag and computed values.
 
@@ -48,3 +49,11 @@ No costs are fabricated and no missing value is filled with zero. Daily beta/dra
 Final turnover requires 0.5 × sum(abs(post-trade weight - actual drifted pre-trade weight)); this module deliberately does not report target-to-target turnover as exact.
 
 The supplied fixture CSVs are copied from repository 05_submission at commit b349d15ea5c5b48fc12df768ef185fb0844a4267 and reproduce the user's submitted numerical results. Expected gross cumulative return: 1.7641948856767624; CAGR: 0.19653079645744076; IR: 0.8834050267790214. These are reproduction checks, not optimisation targets.
+
+## Section 9 audit against the final instructions
+
+The original report did not match the prescribed table layout or include all required exhibits. The corrected presentation follows Section 9.1 and separates extra diagnostics. Section 9.2 CAGR is displayed separately from arithmetic annualised return. Alpha and beta with standard errors remain pending implementation (monthly returns are already available, but the S&P fixture is price-only).
+
+Exhibits 1, 3, 4 and 5 have data: cumulative active performance with S&P context, gross calendar-year returns, monthly target exposures, and top/bottom average holdings. Exhibit 3 is incomplete without costs; exhibit 4 shows monthly targets, not daily drift. Exhibits 2, 6, 7 and 8 are explicit missing-data panels, not fabricated plots.
+
+Section 9.4 does not specify how to aggregate cumulative active returns. The report explicitly uses the difference of compounded strategy and benchmark wealth and applies the same convention to S&P context; confirm that convention with the organisers. Price-only S&P data remain a disclosed limitation. This report is not final-ready.

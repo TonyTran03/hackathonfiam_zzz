@@ -122,6 +122,45 @@ def calculate(h, r):
     return pd.DataFrame(rows),stats,yearly,avg,top,p
 
 
+def required_table(r, stats, p):
+    """Section 9.1 presentation schema; raw diagnostics remain separate."""
+    b=performance(r.hurdle,r.cash_monthly)
+    rows=[]
+    def add(metric,unit,strategy='Pending',benchmark='n/a'):
+        rows.append([metric,unit,strategy,benchmark])
+    def fmt(v,scale=1):
+        return f'{v*scale:,.3f}' if np.isfinite(v) else 'Undefined'
+    for label,unit,key,scale in [
+        ('Ending value of the endowment','US$ billion','ending_nav',1e-9),
+        ('Cumulative return over the period','%','cumulative',100),
+        ('Annualised return','% per year','arithmetic',100),
+        ('Annualised volatility','% per year','volatility',100)]:
+        add(label,unit,fmt(p[key],scale),fmt(b[key],scale))
+    add('Annualised alpha vs S&P 500','% per year (+ s.e.)')
+    add('Beta vs S&P 500 - monthly','coefficient (+ s.e.)')
+    add('Beta vs S&P 500 - daily','coefficient (+ s.e.)')
+    add('Sharpe ratio','annualised',fmt(p['sharpe']),fmt(b['sharpe']))
+    add('Information ratio vs T-bill + 4%','annualised',fmt(p['information_ratio']))
+    add('Tracking error','% per year',fmt(p['tracking_error'],100))
+    add('Maximum drawdown','%',fmt(p['drawdown'],100),fmt(b['drawdown'],100))
+    add('Maximum one-month loss','%',fmt(min(0,p['worst_month']),100),fmt(min(0,b['worst_month']),100))
+    add('Maximum one-day loss','%',benchmark='Pending')
+    for label,col,unit,aggs,scale in [
+        ('Positions held','positions','average / min / max',['mean','min','max'],1),
+        ('Gross exposure','gross','average / maximum, % of capital',['mean','max'],100),
+        ('Net exposure','net','average / min / max, % of capital',['mean','min','max'],100)]:
+        add(label,unit,' / '.join(fmt(getattr(stats[col],agg)(),scale) for agg in aggs))
+    for label,unit in [
+        ('One-way turnover','% per rebalance and annualised'),
+        ('Average holding period','trading days'),
+        ('Average position size','US$ million'),
+        ('Short book median market cap','US$ million'),
+        ('Trading cost','% of NAV per year'),
+        ('Borrow cost','% of NAV per year'),
+        ('Information ratio, net of all costs','annualised')]:add(label,unit)
+    return pd.DataFrame(rows,columns=['Metric','Units / basis','Strategy','Benchmark'])
+
+
 def generate(folder, out, verify=False):
     h,r,files=load_inputs(folder)
     table,stats,yearly,avg,top,p=calculate(h,r)
@@ -130,7 +169,7 @@ def generate(folder, out, verify=False):
             if not np.isclose(p[key],value,atol=1e-10,rtol=0):raise ValueError(f'Round-one reference mismatch: {key}')
         if len(h)!=13600 or len(r)!=68:raise ValueError('Round-one row-count mismatch')
     out.mkdir(parents=True,exist_ok=True)
-    for name,df in [('performance_summary',table),('exposures_monthly',stats),('yearly_returns',yearly),('average_holdings',avg),('top_bottom_holdings',top)]:df.to_csv(out/f'{name}.csv',index=False)
+    for name,df in [('metric_diagnostics',table),('exposures_monthly',stats),('yearly_returns',yearly),('average_holdings',avg),('top_bottom_holdings',top)]:df.to_csv(out/f'{name}.csv',index=False)
     dates=r.month.dt.to_timestamp('M')
     start=dates.iloc[0]-pd.offsets.MonthEnd(1)
     x=pd.DatetimeIndex([start,*dates]).strftime('%Y-%m-%d').tolist()
@@ -139,32 +178,49 @@ def generate(folder, out, verify=False):
     for c,label in [('total','Strategy - gross'),('hurdle','Cash + 4%'),('sp500_ret','S&P 500 - price only')]:
         growth.add_trace(go.Scatter(x=x,y=np.r_[1,np.cumprod(1+r[c])].tolist(),name=label,mode='lines'))
     growth.update_layout(title='Round-one monthly performance',yaxis_title='Growth of $1')
-    charts.append(growth)
+    # Absolute growth is supplementary, not an extra required exhibit.
     curve=(1+r.total).cumprod()-(1+r.hurdle).cumprod()
     active=go.Figure(go.Scatter(x=x,y=(np.r_[0,curve]*100).tolist(),name='Wealth advantage',mode='lines'))
-    active.update_layout(title='Cumulative wealth advantage over benchmark',yaxis_title='Percentage-point difference')
+    active.add_trace(go.Scatter(x=x,y=(np.r_[0,(1+r.sp500_ret).cumprod()-(1+r.hurdle).cumprod()]*100).tolist(),name='S&P 500 price - benchmark (context)',mode='lines'))
+    active.update_layout(title='1. Cumulative active performance - compounded wealth difference',yaxis_title='Percentage-point difference')
     charts.append(active)
     annual=go.Figure()
     labels=[str(row.year)+(' (partial)' if row.months<12 else '') for row in yearly.itertuples()]
     for c,label in [('strategy_gross','Strategy - gross'),('benchmark','Cash + 4%'),('sp500_price','S&P 500 - price only')]:
         annual.add_trace(go.Bar(x=labels,y=(yearly[c]*100).tolist(),name=label))
-    annual.update_layout(title='Calendar-year returns - partial years labelled',barmode='group',yaxis_title='Return (%)',xaxis_type='category')
+    annual.add_annotation(text='After-cost strategy returns: pending cost ledger',xref='paper',yref='paper',x=0,y=1.12,showarrow=False)
+    annual.update_layout(title='3. Calendar-year returns - gross only, incomplete',barmode='group',yaxis_title='Return (%)',xaxis_type='category')
     charts.append(annual)
     exposures=make_subplots(rows=3,cols=1,shared_xaxes=True,vertical_spacing=.08,subplot_titles=('Gross exposure','Net exposure','Position count'))
     for i,c in enumerate(['gross','net','positions'],1):
         exposures.add_trace(go.Scatter(x=dates.dt.strftime('%Y-%m-%d').tolist(),y=(stats[c]*(100 if c!='positions' else 1)).tolist(),name=c.title(),mode='lines'),row=i,col=1)
         exposures.update_yaxes(title_text='Count' if c=='positions' else '% of NAV',row=i,col=1)
-    exposures.update_layout(title='Recorded monthly target exposures - not daily exposure paths',height=680,showlegend=False)
+    exposures.update_layout(title='4. Gross, net and position count - monthly snapshots only',height=680,showlegend=False)
     charts.append(exposures)
+    def pending(title,reason):
+        fig=go.Figure()
+        fig.update_layout(title=title,height=300,xaxis_visible=False,yaxis_visible=False)
+        fig.add_annotation(text='PENDING: '+reason,x=.5,y=.5,xref='paper',yref='paper',showarrow=False)
+        return fig
+    holdings=go.Figure(go.Bar(
+        x=(top.average_weight*100).tolist(),
+        y=[str(row.get('company_name',row.get('ticker',row['permno'])))+' ('+str(row['permno'])+')' for _,row in top.iterrows()],
+        orientation='h',marker_color=['#126e82' if v>0 else '#b45349' for v in top.average_weight]))
+    holdings.update_layout(title='5. Top ten and bottom ten holdings by average weight',height=720,xaxis_title='Average weight (% of NAV)',yaxis=dict(autorange='reversed'),margin=dict(l=300))
+    charts=[active,
+        pending('2. Rolling beta to S&P 500 - 252 trading days','Aligned daily portfolio, cash and S&P 500 returns required.'),
+        annual,exposures,holdings,
+        pending('6. Ten positive and ten negative return contributors','Stock-level P&L and agreed attribution method required.'),
+        pending('7. Short-book market cap and dollar-volume distributions','Historical market cap and dollar volume required; $500m floor not verified.'),
+        pending('8. Position size in days of ADV - long and short','Dollar positions and aligned average daily dollar volume required.')]
     for fig in charts:
-        fig.update_layout(template='plotly_white',font=dict(family='Arial, sans-serif',color='#173047'),margin=dict(l=70,r=25,t=80,b=60),hovermode='x unified',dragmode='zoom')
-    for fig in [growth,active]:
-        fig.update_xaxes(rangeslider_visible=True,rangeselector=dict(buttons=[dict(count=1,label='1Y',step='year',stepmode='backward'),dict(count=3,label='3Y',step='year',stepmode='backward'),dict(label='All',step='all')]))
+        fig.update_layout(template='plotly_white',font=dict(family='Arial, sans-serif',color='#173047'),hovermode='x unified',dragmode='zoom')
+    active.update_xaxes(rangeslider_visible=True,rangeselector=dict(buttons=[dict(count=1,label='1Y',step='year',stepmode='backward'),dict(count=3,label='3Y',step='year',stepmode='backward'),dict(label='All',step='all')]))
     chart_html=[]
     for i,fig in enumerate(charts):
-        chart_html.append(fig.to_html(full_html=False,include_plotlyjs=True if i==0 else False,div_id=f'chart-{i+1}',config=dict(scrollZoom=True,responsive=True,displaylogo=False,toImageButtonOptions=dict(format='png',filename=f'fiam_chart_{i+1}',scale=2))))
+        chart_html.append(fig.to_html(full_html=False,include_plotlyjs=True if i==0 else False,div_id=f'chart-{i+1}',config=dict(scrollZoom=True,responsive=True,displaylogo=False,toImageButtonOptions=dict(format='png',filename=f'fiam_exhibit_{i+1}',scale=2))))
     status=pd.DataFrame([
-        [1,'Cumulative active performance','partial','Gross monthly wealth comparison; daily/net version pending.'],
+        [1,'Cumulative active performance','partial','Monthly compounded wealth difference with S&P price context; convention explicit, official market series pending.'],
         [2,'252-day rolling beta','pending','Daily return series required.'],
         [3,'Calendar-year gross/net returns','partial','Gross and benchmark available; net costs pending.'],
         [4,'Exposure and position histories','partial','Monthly snapshots only.'],
@@ -173,14 +229,18 @@ def generate(folder, out, verify=False):
         [7,'Short market-cap/dollar-volume distributions','pending','Historical stock characteristics required.'],
         [8,'Position size in days of ADV','pending','Dollar positions and ADV required.']],columns=['section_9_4_item','exhibit','status','note'])
     status.to_csv(out/'exhibit_status.csv',index=False)
-    table_display=table.copy()
-    for c in ['strategy','benchmark']:table_display[c]=table_display[c].map(lambda x:'—' if pd.isna(x) else f'{x:,.6f}')
+    table_display=required_table(r,stats,p)
+    table_display.to_csv(out/'performance_summary.csv',index=False)
     body='''<!doctype html><meta charset="utf-8"><title>FIAM Round-one Reporting</title><style>body{font:15px system-ui;max-width:1100px;margin:40px auto;color:#173047;padding:0 20px}h1,h2{color:#126e82}table{border-collapse:collapse;width:100%;font-size:12px}td,th{padding:9px;border-bottom:1px solid #dbe3e8;text-align:left}th{background:#edf4f6}img{width:100%;margin:15px 0}.notice{padding:18px;background:#fff4dc;border-left:4px solid #c58b27}</style><h1>FIAM · Round-one reporting baseline</h1><p>Stage one: monthly reporting baseline</p><div class="notice">Gross monthly results only. This is a reporting test, not the final submission. Pending values are unavailable, never zero. Monthly target snapshots do not establish daily compliance.</div>'''
     body+=f'<p>{len(r)} months · {len(h):,} position records · starting capital assumption: US$1 billion.</p>'
     body+='<p>Drag or scroll to zoom. Use the toolbar to pan, reset axes, or download a PNG. Hover for values; click legend entries to toggle series. Double-click to reset. Works offline.</p>'
+    body+='<h2>9.1 Required performance table</h2><p>Gross monthly baseline; annualised return is arithmetic mean times 12. Exposure and count statistics use monthly target snapshots. Drawdown is monthly only. Losses are signed non-positive returns. Pending means unavailable; n/a means not applicable.</p>'+table_display.to_html(index=False,escape=True)
+    b=performance(r.hurdle,r.cash_monthly)
+    body+=f'<p>Section 9.2 supplementary CAGR: strategy {p["cagr"]*100:.3f}%; benchmark {b["cagr"]*100:.3f}%. Benchmark Sharpe is undefined because excess returns over cash are constant. Monthly alpha/beta with standard errors remain unimplemented.</p>'
+    body+='<h2>9.4 Required exhibits</h2><p>Four data exhibits and four explicitly missing exhibits follow. Placeholders are not completed exhibits. Calendar-year net returns are also pending.</p>'
     # Escape calendar regex literals in the bundled JavaScript; report text is English.
     body+=re.sub(r'[\u3400-\u9fff]',lambda m: '\\u%04x' % ord(m.group()),''.join(chart_html))
-    body+='<h2>Performance table scaffold</h2><p>Decimal returns: 0.01 = 1%. NAV is in USD. Risk metrics use 12 monthly periods/year. Benchmark Sharpe is undefined because its excess over cash is constant.</p>'+table_display.to_html(index=False,escape=True)
+
     body+='<h2>Top and bottom holdings</h2><p>Average over all holding months; zero when absent. These are monthly averages, not daily time-weighted averages.</p>'+top.to_html(index=False,escape=True)
     body+='<h2>Required exhibit coverage</h2>'+status.to_html(index=False,escape=True)
     body+='<h2>Conventions and limitations</h2><p>Benchmark: cash_monthly + 0.04/12; cash_monthly is TB3MS/1200. S&P series excludes dividends. Cumulative active exhibit is strategy compounded wealth minus benchmark compounded wealth, not compounding the difference of returns. First-period drawdowns include initial NAV. Alpha/beta, exact turnover, daily metrics, costs and attribution remain pending.</p>'
