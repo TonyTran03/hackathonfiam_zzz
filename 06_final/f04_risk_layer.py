@@ -50,7 +50,35 @@ LOSS_SIGMA = 5.0
 VOL_WINDOW = 10
 SCALE_MIN, SCALE_MAX = 0.0, 1.5
 
-AGENT_MODEL = os.environ.get("FIAM_AGENT_MODEL", "claude-haiku-4-5")
+# Which model answers. FIAM_AGENT_PROVIDER picks the backend; every backend
+# gets the same system prompt, the same blinded context and the same cache.
+#   anthropic  ANTHROPIC_API_KEY             default model claude-haiku-4-5
+#   xai        XAI_API_KEY (Grok)            default model grok-3-mini
+#   ollama     a local Ollama server, no key default model llama3.1:8b
+# The key is read from the environment only: never written to a file, a log
+# or the cache, so nothing secret can reach the repository.
+AGENT_PROVIDER = os.environ.get("FIAM_AGENT_PROVIDER", "anthropic")
+_DEFAULT_MODEL = {"anthropic": "claude-haiku-4-5", "xai": "grok-3-mini", "ollama": "llama3.1:8b"}
+AGENT_MODEL = os.environ.get("FIAM_AGENT_MODEL", _DEFAULT_MODEL.get(AGENT_PROVIDER, "claude-haiku-4-5"))
+_OPENAI_STYLE = {"xai": ("https://api.x.ai/v1/chat/completions", "XAI_API_KEY"),
+                 "ollama": (os.environ.get("OLLAMA_URL", "http://localhost:11434") + "/v1/chat/completions", None)}
+
+
+def _chat_openai_style(provider, model, system, user):
+    """xAI and Ollama both speak the OpenAI chat-completions format; plain
+    HTTP, so no extra package is needed."""
+    import urllib.request
+    url, key_env = _OPENAI_STYLE[provider]
+    headers = {"Content-Type": "application/json"}
+    if key_env:
+        headers["Authorization"] = "Bearer " + os.environ[key_env]
+    body = json.dumps({"model": model, "temperature": 0, "max_tokens": 200,
+                       "messages": [{"role": "system", "content": system},
+                                    {"role": "user", "content": user}]}).encode()
+    req = urllib.request.Request(url, data=body, headers=headers, method="POST")
+    with urllib.request.urlopen(req, timeout=120) as r:
+        out = json.loads(r.read())
+    return out["choices"][0]["message"]["content"]
 SYSTEM_PROMPT = """You are the risk analyst for a market-neutral US equity fund.
 You review ONE flagged position at a time. You see only numbers about the
 position and the book, never the company's identity, and you must not guess it.
@@ -178,15 +206,25 @@ class AgentLayer(_Base):
     """Same triggers; the decision comes from a language model, cached."""
     name = "agent"
 
-    def __init__(self, model=AGENT_MODEL):
+    def __init__(self, model=AGENT_MODEL, provider=AGENT_PROVIDER):
         super().__init__()
-        self.model = model
+        self.model, self.provider = model, provider
         F.AGENT_CACHE.mkdir(parents=True, exist_ok=True)
         self.client = None
-        if os.environ.get("ANTHROPIC_API_KEY"):
+        if provider == "anthropic" and os.environ.get("ANTHROPIC_API_KEY"):
             import anthropic
             self.client = anthropic.Anthropic()
+        elif provider == "ollama" or (provider == "xai" and os.environ.get("XAI_API_KEY")):
+            self.client = provider
         self.calls = self.hits = 0
+
+    def ask(self, prompt):
+        if self.provider == "anthropic":
+            msg = self.client.messages.create(
+                model=self.model, max_tokens=200, temperature=0,
+                system=SYSTEM_PROMPT, messages=[{"role": "user", "content": prompt}])
+            return msg.content[0].text
+        return _chat_openai_style(self.provider, self.model, SYSTEM_PROMPT, prompt)
 
     def context(self, eng, di, t, nav):
         """Blinded, numeric, point-in-time. Nothing here names the company or
@@ -220,13 +258,11 @@ class AgentLayer(_Base):
             rec = json.loads(path.read_text())
         else:
             if self.client is None:
-                raise SystemExit("agent cache miss and no ANTHROPIC_API_KEY: set the key "
-                                 "to run the agent, or replay a complete cache")
-            msg = self.client.messages.create(
-                model=self.model, max_tokens=200, temperature=0,
-                system=SYSTEM_PROMPT, messages=[{"role": "user", "content": prompt}])
-            text = msg.content[0].text
-            rec = {"model": self.model, "prompt": ctx, "response": text}
+                raise SystemExit("agent cache miss and no key for provider %r: set "
+                                 "ANTHROPIC_API_KEY / XAI_API_KEY, use FIAM_AGENT_PROVIDER=ollama, "
+                                 "or replay a complete cache" % self.provider)
+            text = self.ask(prompt)
+            rec = {"provider": self.provider, "model": self.model, "prompt": ctx, "response": text}
             path.write_text(json.dumps(rec, indent=1))
             self.calls += 1
         try:
@@ -286,3 +322,23 @@ def reidentification_test(n=50, model=AGENT_MODEL, seed=0):
     df.to_csv(out, index=False)
     return {"n": len(df), "share_declined": float(df["unknown"].mean()),
             "note": "answers are matched to true tickers by hand from decisions log; see %s" % out.name}
+
+
+def smoke_test():
+    """One call with a made-up context, to check the key, the network and the
+    reply format before a full run:
+        FIAM_AGENT_PROVIDER=xai XAI_API_KEY=... python3 -c "import f04_risk_layer as R; R.smoke_test()"
+    """
+    ctx = {"position": "long", "weight_pct_nav": 0.8, "triggers": ["VOL"],
+           "formation_daily_vol_pct": 2.1, "vol_last_10d_pct": 6.9,
+           "adverse_move_sigma_yesterday": -1.2, "beta_estimate": 1.1,
+           "returns_last_5d_pct": [-3.1, 4.0, -5.2, 2.2, -1.0],
+           "trading_days_since_formation": 9, "event_type": None,
+           "book": {"gross_pct": 189.0, "net_pct": 7.5}}
+    lay = AgentLayer()
+    if lay.client is None:
+        raise SystemExit("no key for provider %r" % lay.provider)
+    text = lay.ask(json.dumps(ctx, sort_keys=True))
+    ans = json.loads(text[text.find("{"):text.rfind("}") + 1])
+    print("provider %s, model %s -> scale %s: %s" % (lay.provider, lay.model, ans["scale"], ans.get("reason")))
+    return ans
