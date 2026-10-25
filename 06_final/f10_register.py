@@ -18,6 +18,18 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import fconfig as F  # noqa: E402
 
+
+def label_table():
+    """Ticker and name per permno: the latest LABELLED month in the panel.
+    The panel leaves some stock-months unlabelled on purpose; a holding is
+    named from its nearest labelled month, as in round 1 (04_build_portfolio
+    fill_labels), and label_month says which month that was."""
+    from common import config as C
+    pnl_ = pd.read_parquet(C.MODEL_TABLE, columns=["permno", "target_month", "ticker", "company_name"])
+    pnl_ = pnl_.dropna(subset=["ticker"]).sort_values("target_month")
+    return pnl_.drop_duplicates("permno", keep="last").set_index("permno")[
+        ["ticker", "company_name", "target_month"]].rename(columns={"target_month": "label_month"})
+
 HEADLINE = "test_M"
 
 ORIGIN = {
@@ -89,9 +101,7 @@ def holdings(tag=HEADLINE):
     d = pd.read_parquet(rd / "daily.parquet")
     p = pd.read_parquet(rd / "pnl.parquet")
     sig = pd.read_parquet(F.DATA / "signal_test.parquet")
-    names = (sig.sort_values("target_month")
-                .drop_duplicates("permno", keep="last")
-                .set_index("permno")[["ticker", "company_name"]])
+    names = label_table()
     # a position earning on day k+1 is the book held after the close of day k
     p = p.copy()
     p["book_date"] = d["date"].values[(p["di"] - 1).clip(lower=0).astype(int)]

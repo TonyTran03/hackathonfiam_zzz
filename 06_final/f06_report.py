@@ -32,6 +32,18 @@ import pandas as pd  # noqa: E402
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import fconfig as F  # noqa: E402
 
+
+def label_table():
+    """Ticker and name per permno: the latest LABELLED month in the panel.
+    The panel leaves some stock-months unlabelled on purpose; a holding is
+    named from its nearest labelled month, as in round 1 (04_build_portfolio
+    fill_labels), and label_month says which month that was."""
+    from common import config as C
+    pnl_ = pd.read_parquet(C.MODEL_TABLE, columns=["permno", "target_month", "ticker", "company_name"])
+    pnl_ = pnl_.dropna(subset=["ticker"]).sort_values("target_month")
+    return pnl_.drop_duplicates("permno", keep="last").set_index("permno")[
+        ["ticker", "company_name", "target_month"]].rename(columns={"target_month": "label_month"})
+
 NAVY, RED, GREY, BLUE = "#1f2a5c", "#c0392b", "#888888", "#2f6690"
 
 
@@ -266,7 +278,7 @@ def exhibits(run, sig, outdir, m):
     fig.tight_layout(); fig.savefig(fig_dir / "exposures.png", dpi=160); plt.close(fig)
 
     # 5 top/bottom 10 by average weight; 6 contributors
-    names = sig.drop_duplicates("permno", keep="last").set_index("permno")[["ticker", "company_name"]]
+    names = label_table()
     navs = d["nav"].shift(1).fillna(F.FINAL["start_nav"]).values
     pnl = pnl.copy()
     pnl["w"] = pnl["x"] / navs[pnl["di"].astype(int)]
