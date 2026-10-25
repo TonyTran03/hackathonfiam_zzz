@@ -5,11 +5,12 @@ import hashlib
 import json
 import html
 import platform
+import re
 import numpy as np
 import pandas as pd
-import matplotlib
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
+import plotly
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 
 def load_inputs(folder):
@@ -130,17 +131,38 @@ def generate(folder, out, verify=False):
         if len(h)!=13600 or len(r)!=68:raise ValueError('Round-one row-count mismatch')
     out.mkdir(parents=True,exist_ok=True)
     for name,df in [('performance_summary',table),('exposures_monthly',stats),('yearly_returns',yearly),('average_holdings',avg),('top_bottom_holdings',top)]:df.to_csv(out/f'{name}.csv',index=False)
-    plt.rcParams.update({'figure.dpi':140,'axes.spines.top':False,'axes.spines.right':False,'axes.grid':True,'grid.alpha':.18,'font.size':10})
-    dates=r.month.dt.to_timestamp('M');start=dates.iloc[0]-pd.offsets.MonthEnd(1);x=pd.DatetimeIndex([start,*dates])
-    fig,ax=plt.subplots(figsize=(10,4))
-    for c,label in [('total','Strategy — gross'),('hurdle','Cash + 4%'),('sp500_ret','S&P 500 — price only')]:ax.plot(x,np.r_[1,np.cumprod(1+r[c])],label=label)
-    ax.set(ylabel='Growth of $1',title='Round-one monthly performance');ax.legend();fig.tight_layout();fig.savefig(out/'growth.png');plt.close(fig)
+    dates=r.month.dt.to_timestamp('M')
+    start=dates.iloc[0]-pd.offsets.MonthEnd(1)
+    x=pd.DatetimeIndex([start,*dates]).strftime('%Y-%m-%d').tolist()
+    charts=[]
+    growth=go.Figure()
+    for c,label in [('total','Strategy - gross'),('hurdle','Cash + 4%'),('sp500_ret','S&P 500 - price only')]:
+        growth.add_trace(go.Scatter(x=x,y=np.r_[1,np.cumprod(1+r[c])].tolist(),name=label,mode='lines'))
+    growth.update_layout(title='Round-one monthly performance',yaxis_title='Growth of $1')
+    charts.append(growth)
     curve=(1+r.total).cumprod()-(1+r.hurdle).cumprod()
-    fig,ax=plt.subplots(figsize=(10,3));ax.plot(x,np.r_[0,curve]*100,color='#126e82');ax.set(title='Cumulative wealth advantage over benchmark',ylabel='Percentage-point difference');fig.tight_layout();fig.savefig(out/'active_wealth.png');plt.close(fig)
-    fig,ax=plt.subplots(figsize=(10,4));yearly.set_index('year')[['strategy_gross','benchmark','sp500_price']].mul(100).plot.bar(ax=ax);ax.set(title='Calendar-year returns — 2026 is January–August',ylabel='Return (%)',xlabel='');ax.tick_params(axis='x',rotation=0);fig.tight_layout();fig.savefig(out/'yearly_returns.png');plt.close(fig)
-    fig,axes=plt.subplots(3,1,figsize=(10,6),sharex=True)
-    for ax,c in zip(axes,['gross','net','positions']):ax.plot(dates,stats[c]*(100 if c!='positions' else 1));ax.set_ylabel(c+(' (%)' if c!='positions' else ''))
-    axes[0].set_title('Recorded monthly target exposures — not daily exposure paths');fig.tight_layout();fig.savefig(out/'exposures.png');plt.close(fig)
+    active=go.Figure(go.Scatter(x=x,y=(np.r_[0,curve]*100).tolist(),name='Wealth advantage',mode='lines'))
+    active.update_layout(title='Cumulative wealth advantage over benchmark',yaxis_title='Percentage-point difference')
+    charts.append(active)
+    annual=go.Figure()
+    labels=[str(row.year)+(' (partial)' if row.months<12 else '') for row in yearly.itertuples()]
+    for c,label in [('strategy_gross','Strategy - gross'),('benchmark','Cash + 4%'),('sp500_price','S&P 500 - price only')]:
+        annual.add_trace(go.Bar(x=labels,y=(yearly[c]*100).tolist(),name=label))
+    annual.update_layout(title='Calendar-year returns - partial years labelled',barmode='group',yaxis_title='Return (%)',xaxis_type='category')
+    charts.append(annual)
+    exposures=make_subplots(rows=3,cols=1,shared_xaxes=True,vertical_spacing=.08,subplot_titles=('Gross exposure','Net exposure','Position count'))
+    for i,c in enumerate(['gross','net','positions'],1):
+        exposures.add_trace(go.Scatter(x=dates.dt.strftime('%Y-%m-%d').tolist(),y=(stats[c]*(100 if c!='positions' else 1)).tolist(),name=c.title(),mode='lines'),row=i,col=1)
+        exposures.update_yaxes(title_text='Count' if c=='positions' else '% of NAV',row=i,col=1)
+    exposures.update_layout(title='Recorded monthly target exposures - not daily exposure paths',height=680,showlegend=False)
+    charts.append(exposures)
+    for fig in charts:
+        fig.update_layout(template='plotly_white',font=dict(family='Arial, sans-serif',color='#173047'),margin=dict(l=70,r=25,t=80,b=60),hovermode='x unified',dragmode='zoom')
+    for fig in [growth,active]:
+        fig.update_xaxes(rangeslider_visible=True,rangeselector=dict(buttons=[dict(count=1,label='1Y',step='year',stepmode='backward'),dict(count=3,label='3Y',step='year',stepmode='backward'),dict(label='All',step='all')]))
+    chart_html=[]
+    for i,fig in enumerate(charts):
+        chart_html.append(fig.to_html(full_html=False,include_plotlyjs=True if i==0 else False,div_id=f'chart-{i+1}',config=dict(scrollZoom=True,responsive=True,displaylogo=False,toImageButtonOptions=dict(format='png',filename=f'fiam_chart_{i+1}',scale=2))))
     status=pd.DataFrame([
         [1,'Cumulative active performance','partial','Gross monthly wealth comparison; daily/net version pending.'],
         [2,'252-day rolling beta','pending','Daily return series required.'],
@@ -153,15 +175,17 @@ def generate(folder, out, verify=False):
     status.to_csv(out/'exhibit_status.csv',index=False)
     table_display=table.copy()
     for c in ['strategy','benchmark']:table_display[c]=table_display[c].map(lambda x:'—' if pd.isna(x) else f'{x:,.6f}')
-    body='''<!doctype html><meta charset="utf-8"><title>FIAM Round-one Reporting</title><style>body{font:15px system-ui;max-width:1100px;margin:40px auto;color:#173047;padding:0 20px}h1,h2{color:#126e82}table{border-collapse:collapse;width:100%;font-size:12px}td,th{padding:9px;border-bottom:1px solid #dbe3e8;text-align:left}th{background:#edf4f6}img{width:100%;margin:15px 0}.notice{padding:18px;background:#fff4dc;border-left:4px solid #c58b27}</style><h1>FIAM · Round-one reporting baseline</h1><p>阶段一：初赛月度报告基准</p><div class="notice">Gross monthly results only. This is a reporting test, not the final submission. Pending values are unavailable, never zero. Monthly target snapshots do not establish daily compliance.</div>'''
+    body='''<!doctype html><meta charset="utf-8"><title>FIAM Round-one Reporting</title><style>body{font:15px system-ui;max-width:1100px;margin:40px auto;color:#173047;padding:0 20px}h1,h2{color:#126e82}table{border-collapse:collapse;width:100%;font-size:12px}td,th{padding:9px;border-bottom:1px solid #dbe3e8;text-align:left}th{background:#edf4f6}img{width:100%;margin:15px 0}.notice{padding:18px;background:#fff4dc;border-left:4px solid #c58b27}</style><h1>FIAM · Round-one reporting baseline</h1><p>Stage one: monthly reporting baseline</p><div class="notice">Gross monthly results only. This is a reporting test, not the final submission. Pending values are unavailable, never zero. Monthly target snapshots do not establish daily compliance.</div>'''
     body+=f'<p>{len(r)} months · {len(h):,} position records · starting capital assumption: US$1 billion.</p>'
-    for f in ['growth.png','active_wealth.png','yearly_returns.png','exposures.png']:body+=f'<img src="{f}" alt="{f}">'
+    body+='<p>Drag or scroll to zoom. Use the toolbar to pan, reset axes, or download a PNG. Hover for values; click legend entries to toggle series. Double-click to reset. Works offline.</p>'
+    # Escape calendar regex literals in the bundled JavaScript; report text is English.
+    body+=re.sub(r'[\u3400-\u9fff]',lambda m: '\\u%04x' % ord(m.group()),''.join(chart_html))
     body+='<h2>Performance table scaffold</h2><p>Decimal returns: 0.01 = 1%. NAV is in USD. Risk metrics use 12 monthly periods/year. Benchmark Sharpe is undefined because its excess over cash is constant.</p>'+table_display.to_html(index=False,escape=True)
     body+='<h2>Top and bottom holdings</h2><p>Average over all holding months; zero when absent. These are monthly averages, not daily time-weighted averages.</p>'+top.to_html(index=False,escape=True)
     body+='<h2>Required exhibit coverage</h2>'+status.to_html(index=False,escape=True)
     body+='<h2>Conventions and limitations</h2><p>Benchmark: cash_monthly + 0.04/12; cash_monthly is TB3MS/1200. S&P series excludes dividends. Cumulative active exhibit is strategy compounded wealth minus benchmark compounded wealth, not compounding the difference of returns. First-period drawdowns include initial NAV. Alpha/beta, exact turnover, daily metrics, costs and attribution remain pending.</p>'
     (out/'report.html').write_text(body,encoding='utf-8')
-    manifest={'scope':'stage-one monthly gross reporting','reference_verified':verify,'months':len(r),'holdings_rows':len(h),'inputs':{str(f):hashlib.sha256(f.read_bytes()).hexdigest() for f in files},'script_sha256':hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),'python':platform.python_version(),'pandas':pd.__version__,'numpy':np.__version__,'gross_results':p,'complete_final_report':False}
+    manifest={'scope':'stage-one monthly gross reporting','reference_verified':verify,'months':len(r),'holdings_rows':len(h),'inputs':{str(f):hashlib.sha256(f.read_bytes()).hexdigest() for f in files},'script_sha256':hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),'python':platform.python_version(),'pandas':pd.__version__,'numpy':np.__version__,'plotly':plotly.__version__,'gross_results':p,'complete_final_report':False}
     (out/'validation.json').write_text(json.dumps(manifest,indent=2,allow_nan=False))
     print(json.dumps(p,indent=2));print('Report:',out/'report.html')
 

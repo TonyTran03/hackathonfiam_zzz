@@ -4,7 +4,7 @@ This standalone module implements the first reporting milestone on the actual fi
 
 ## Run
 
-Unzip this package and open a terminal in `fiam_reporting`:
+From your repository checkout, open a terminal in `fiam_reporting`:
 
 ```bash
 python -m pip install -r requirements.txt
@@ -12,9 +12,8 @@ python report.py --inputs inputs --output output --verify-round1
 python -m unittest discover -s tests -v
 ```
 
-Open `output/report.html` in a browser. Keep the PNG files beside it.
+Open `output/report.html` in a browser. The report works offline: Plotly JavaScript is embedded once.
 
-将压缩包解压，在 fiam_reporting 文件夹打开终端，运行以上命令。然后用浏览器打开 output/report.html。修改输入后重新运行即可，无需训练模型。
 
 ## Outputs
 
@@ -22,7 +21,7 @@ Open `output/report.html` in a browser. Keep the PNG files beside it.
 - `yearly_returns.csv`: compounded gross strategy, benchmark and S&P price returns; net returns blank; 2026 is partial January–August.
 - `exposures_monthly.csv`: recorded target-weight gross/net exposures, nonzero position counts and max absolute position size. Not daily compliance evidence.
 - `average_holdings.csv` and `top_bottom_holdings.csv`: equal-month average signed weights across all 68 months, including zero for absent names; latest observed company labels for display only.
-- `growth.png`, `active_wealth.png`, `yearly_returns.png`, `exposures.png`: available monthly plots.
+- `report.html`: four interactive charts with zoom, pan, hover values, legend toggles and PNG export. Performance charts also include date-range controls. Older PNG files are not used.
 - `exhibit_status.csv`: all eight Section 9.4 requirements with availability and gaps.
 - `validation.json`: input and script hashes, software versions, verification flag and computed values.
 

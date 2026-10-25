@@ -1,4 +1,4 @@
 numpy>=1.26
 pandas>=2.2
-matplotlib>=3.8
+plotly>=5.18,<7
 pyarrow>=14

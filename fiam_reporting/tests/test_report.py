@@ -8,6 +8,17 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 import report
 ROOT=Path(__file__).resolve().parents[1]
 class ReportingTests(unittest.TestCase):
+    def test_interactive_english_report(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out=Path(tmp)
+            report.generate(ROOT/'inputs',out,verify=True)
+            page=(out/'report.html').read_text()
+            self.assertNotRegex(page,r'[\u3400-\u9fff]')
+            self.assertEqual(page.count('class="plotly-graph-div"'),4)
+            self.assertEqual(page.count('"scrollZoom": true'),4)
+            self.assertNotIn('<script src=',page)
+            self.assertIn('plotly.js v',page)
+            self.assertIn('Stage one: monthly reporting baseline',page)
     def test_initial_loss_is_drawdown(self):
         self.assertAlmostEqual(report.performance([-.1,0,0],[0,0,0])['drawdown'],-.1)
     def test_compounding(self):
