@@ -126,12 +126,14 @@ def leg_weights(vol, caps, notional):
 
 # ---------------------------------------------------------------- engine
 class Engine:
-    def __init__(self, window, freq="M", overlay=None, layer=None, seed_legs=None,
+    def __init__(self, window, freq="M", overlay=None, layer=None, seed_legs=None, triage=None,
                  label=None, cost_scale=1.0, start_nav=None, cost_mode="sqrt:0.7",
                  borrow_mode="model"):
         self.window, self.freq, self.overlay, self.layer = window, freq, overlay, layer
-        self.label = label or "%s_%s%s%s" % (window, freq, "_" + overlay if overlay else "",
-                                             "_" + layer.name if layer else "")
+        self.triage = triage            # f04_risk_layer.TriageLayer, optional
+        self.label = label or "%s_%s%s%s%s" % (window, freq, "_" + overlay if overlay else "",
+                                               "_" + layer.name if layer else "",
+                                               "_" + triage.name if triage else "")
         self.cost_scale = cost_scale
         self.start_nav = start_nav or FIN["start_nav"]
         self.cost_mode, self.borrow_mode = cost_mode, borrow_mode
@@ -294,8 +296,10 @@ class Engine:
         pending = np.zeros(nP, dtype=bool)
         gone = np.zeros(nP, dtype=bool)
         shares_now = np.full(nP, np.nan)
+        decision_epoch = 0
         targets_log = []
         rows, pos_rows, trades, anomalies, form_log = [], [], [], [], []
+        self.form_log_live = form_log        # read by the triage layer during the run
         acted_events = set()
         cum_month = np.ones(nP)      # running product of daily returns this month
         days = self.days
@@ -363,6 +367,7 @@ class Engine:
             # in one day in a name trading $20m, so execution is capped at
             # MAX_PARTICIPATION of ADV per name per day and the rest carries.
             reason = None
+            forced = gone.copy()              # names trade triage may not touch today
             skip = (self.freq in ("B", "Q") and month_in_book is not None
                     and (month.month - 1) % (2 if self.freq == "B" else 3) != 0)
             if d["is_formation"] and m_str in self.sig_sel and not skip:
@@ -390,14 +395,17 @@ class Engine:
                 pending = (tw != 0) | (x != 0)
                 shares_now[g["pi"].values] = g["shares"].values
                 month_in_book = m_str
+                decision_epoch += 1
                 reason = "formation"
             elif month_in_book is not None and (
                     (self.freq == "W" and d["is_week_start"]) or self.freq == "D"):
                 t2 = self.retighten(di, x, nav)
                 if t2 is not None:
                     chg = np.abs(t2 - x) > 1.0
+                    forced |= (t2 == 0) & (x < 0)     # short closed for the $500m floor
                     tw = np.where(chg, t2 / nav, tw)
                     pending = pending | chg
+                    decision_epoch += 1
                     reason = "retighten"
 
             if month_in_book is not None:
@@ -406,6 +414,7 @@ class Engine:
                     want2, hits = self.event_exits(day, want, acted_events)
                     if hits:
                         chg = want2 != want
+                        forced |= chg
                         tw = np.where(chg, want2 / nav, tw); pending = pending | chg
                         want = want2
                         reason = reason or "event"
@@ -413,16 +422,26 @@ class Engine:
                     new = self.layer.review(self, di, day, want, nav)
                     if new is not None:
                         chg = np.abs(new - want) > 1.0
+                        forced |= chg
                         tw = np.where(chg, new / nav, tw); pending = pending | chg
                         want = new
                         if chg.any():
                             reason = reason or "risk_layer"
 
+            # ---- 2b. trade triage (optional): which proposed trades are worth
+            # paying for. It scales TRADES, sees mandatory names as untouchable,
+            # and decides each order once; tw stays the proposal, tw_exec is
+            # what gets worked.
+            tw_exec = tw
+            if self.triage is not None and month_in_book is not None:
+                tw_exec = self.triage.apply(self, di, day, x, tw, nav, (hs, sig, adv), forced,
+                                            epoch=decision_epoch)
+
             # ---- 3. trade toward the targets, inside the participation cap
             cost, turnover = 0.0, 0.0
             if month_in_book is not None and pending.any():
                 adv_use = np.where(np.isfinite(adv), adv, 1e7)
-                want = np.where(pending, tw * nav, x)
+                want = np.where(pending, tw_exec * nav, x)
                 lim = H["max_participation"] * adv_use
                 # only names that printed a price today can be traded today
                 lim = np.where(np.isfinite(r) & ~gone, lim, 0.0)
@@ -441,6 +460,8 @@ class Engine:
                     cash -= delta.sum() + c
                     cost += c
                     turnover += 0.5 * np.abs(delta).sum() / nav
+                    if self.triage is not None:
+                        self.triage.record_fills(day, delta, "trade")
                     x = x + delta
                     x[np.abs(x) < 1.0] = 0.0
                     for i in np.where(np.abs(delta) > 1.0)[0]:
@@ -449,9 +470,11 @@ class Engine:
                     nav = cash + x.sum()
 
             # ---- 4. enforce the mandate on the ACTUAL book, in code -----
-            fixed, why = self.enforce(x.copy(), nav, di, tw)
+            fixed, why = self.enforce(x.copy(), nav, di, tw_exec)
             delta = np.where(np.isfinite(r), fixed - x, 0.0)
             fixed = x + delta
+            if self.triage is not None and np.abs(delta).sum() > 1.0:
+                self.triage.record_fills(day, delta, "compliance")
             if np.abs(delta).sum() > 1.0:
                 adv_use = np.where(np.isfinite(adv), adv, 1e7)
                 c = self.trade_cost(delta, (hs, sig, adv_use))
@@ -624,6 +647,8 @@ if __name__ == "__main__":
                     help="B / Q: form every 2nd / 3rd month (post-hoc, see run register)")
     ap.add_argument("--overlay", default=None, choices=[None, "E"])
     ap.add_argument("--layer", default=None, choices=[None, "rule", "agent"])
+    ap.add_argument("--triage", default=None, choices=[None, "none", "rule", "ai"],
+                    help="cost-aware trade triage mode (f04_risk_layer.TriageLayer)")
     ap.add_argument("--nav", type=float, default=None, help="starting NAV, US$")
     ap.add_argument("--cost", default="sqrt:0.7", help="sqrt:Y | almgren | flat:BPS")
     ap.add_argument("--borrow", default="model", choices=["model", "flat"])
@@ -637,9 +662,15 @@ if __name__ == "__main__":
         label = "%s_%s_nav%.0fm" % (a.window, a.freq, a.nav / 1e6)
     if a.cost != "sqrt:0.7" or a.borrow != "model":
         label = "%s_%s_cost-%s_borrow-%s" % (a.window, a.freq, a.cost.replace(":", ""), a.borrow)
+    tri = None
+    if a.triage:
+        import f04_risk_layer as RL
+        tri = RL.TriageLayer(a.triage)
     e = Engine(a.window, a.freq, a.overlay, layer=lay, label=label, start_nav=a.nav,
-               cost_mode=a.cost, borrow_mode=a.borrow).run()
+               cost_mode=a.cost, borrow_mode=a.borrow, triage=tri).run()
     save(e)
     if lay is not None:
         lay.write_log(e.label)
+    if tri is not None:
+        tri.write_log(e.label)
     quick_stats(e.daily, e.label)

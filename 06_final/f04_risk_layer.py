@@ -1,4 +1,15 @@
-"""Final stage 4 -- the position-level risk layer: a fixed rule and an agent,
+"""Final stage 4 -- two optional, separate layers between construction and execution.
+
+  RuleLayer / AgentLayer   position-risk resizing (below): resize a POSITION when
+                           something unusual happens to it
+  TriageLayer              cost-aware trade triage (end of file): decide which
+                           proposed TRADES are worth paying for; modes none /
+                           rule / ai; tests in tests_triage.py
+
+Each is passed to the engine on its own (Engine(..., layer=...) or
+Engine(..., triage=...)); neither changes the forecast or the cost model.
+
+The position-level risk layer: a fixed rule and an agent,
 behind the same triggers, so the two can be run side by side (Section 5.3.4).
 
 Design, in the order Section 5.3 lists its requirements:
@@ -342,3 +353,385 @@ def smoke_test():
     ans = json.loads(text[text.find("{"):text.rfind("}") + 1])
     print("provider %s, model %s -> scale %s: %s" % (lay.provider, lay.model, ans["scale"], ans.get("reason")))
     return ans
+
+
+# =============================================================================
+# Cost-aware trade triage (a second, separate optional mode)
+# =============================================================================
+#
+# The position-risk layer above resizes POSITIONS when something unusual
+# happens to them. Trade triage answers a different question, at every
+# decision: of the trades the construction step proposes today, which are worth
+# paying for? Code handles the routine ones; only ambiguous, potentially
+# expensive trades go to review, where a decision is execute, half or skip.
+#
+# The decision scales the proposed TRADE, never the position:
+#     revised_target = current_position + fraction * proposed_trade,  fraction in {1, 0.5, 0}
+# so "half" on a +$4m buy into a $2m holding leaves $4m, not $3m or $1m.
+#
+# Three modes share the eligibility rules, the inputs, the forecast, the cost
+# model and the execution path, so they are comparable:
+#     none   every proposed trade is executed (identical to running without triage)
+#     rule   a fixed rule decides each review-eligible trade
+#     ai     a language model decides each review-eligible trade
+#
+# What triage never touches: compliance trades (the engine's step 4 runs after
+# triage and enforces gross, net, the 5% cap, the name count and the $500m
+# short floor on the ACTUAL book), delistings, and changes made that day by the
+# event overlay or the position-risk layer. Those are "mandatory" and bypass it.
+#
+# Point in time: triage runs at the close of day t, the same moment the engine
+# trades, using only month-end characteristics (forecast rank, beta, ADV,
+# spread, volatility -- all dated end of the previous month), the holdings the
+# fund actually has, and holding ages. It never reads a return. The calendar
+# date is kept OUT of the model's input by default (it is in the log): a date
+# plus a sector is a strong hint to a model that remembers the market.
+# Blinding names, tickers and dates REDUCES model-memory risk; it does not
+# remove it, and the re-identification test should still be reported.
+
+TRIAGE_VERSION = "triage-v1"
+
+TRIAGE_SYSTEM_PROMPT = """You are the execution analyst for a market-neutral US equity fund.
+The portfolio-construction step has proposed ONE trade. You decide whether it is
+worth its trading cost. You see only numbers -- never the company's identity --
+and you must not guess it.
+
+Choose one:
+  execute  trade the full proposed amount
+  half     trade half of the proposed amount (the position moves halfway to its target)
+  skip     do not trade; the position stays where it is
+
+The forecast is a cross-sectional RANK, not an expected return; do not convert
+it into one. Weigh how far the name's rank has moved and how long it has been
+held against the estimated cost and the time needed to trade it. Hard limits
+(gross, net, position size, name count, short-sale floor) are enforced in code
+after you answer.
+
+Return JSON only: {"decision": "execute" | "half" | "skip", "reason": "<one sentence>"}"""
+
+FRACTION = {"execute": 1.0, "half": 0.5, "skip": 0.0}
+
+
+class TriageUnavailable(RuntimeError):
+    """The model could not give a valid decision and on_failure='raise'."""
+
+
+class TriageConfig:
+    """Thresholds, set on the 2019-2020 design window and never tuned on 2021-2026.
+
+    They are round numbers read off the DISTRIBUTION of estimated trade costs
+    in the design window (non-mandatory orders of the monthly book under the
+    pre-registered cost model: quartiles 53 / 88 / 133 bp, 90th percentile
+    203 bp), not optimised on any return. Roughly: the cheaper half of trades
+    is routine; the rest is reviewed; the fixed rule halves the costliest
+    quarter and skips the costliest tenth. A first draft used 20 bp, which
+    sent 96% of all orders to review -- no longer triage.
+
+      min_trade_pct_nav     below this the trade is routine (executed)
+      routine_cost_bps      at or below this all-in cost the trade is routine
+      review_adv_frac       a trade larger than this share of ADV is reviewed
+                            even when cheap on paper: 0.10 = more than one day
+                            at the engine's participation cap (impact models
+                            are least reliable for large orders)
+      rule_half_bps         fixed rule: above this cost, trade half
+      rule_skip_bps         fixed rule: above this cost, skip -- except a full
+                            exit or a flip of side, which is halved instead
+      include_date          put the calendar date in the model's input (off)
+      on_failure            'raise' (default): stop the run on an unusable model
+                            answer; 'execute': trade the full amount and log
+                            status 'ai_failed_executed'. A fixed-rule decision
+                            is NEVER substituted for a missing model answer.
+    """
+
+    def __init__(self, min_trade_pct_nav=0.0002, routine_cost_bps=90.0, review_adv_frac=0.10,
+                 rule_half_bps=130.0, rule_skip_bps=200.0, include_date=False, on_failure="raise"):
+        assert on_failure in ("raise", "execute")
+        self.min_trade_pct_nav = min_trade_pct_nav
+        self.routine_cost_bps = routine_cost_bps
+        self.review_adv_frac = review_adv_frac
+        self.rule_half_bps = rule_half_bps
+        self.rule_skip_bps = rule_skip_bps
+        self.include_date = include_date
+        self.on_failure = on_failure
+
+    def as_dict(self):
+        return dict(self.__dict__)
+
+
+def revised_target(current, proposed_target, fraction):
+    """Scale the TRADE, not the position."""
+    return current + fraction * (proposed_target - current)
+
+
+def trade_kind(current, target):
+    if current == 0 and target != 0:
+        return "entry"
+    if target == 0 and current != 0:
+        return "exit"
+    if np.sign(current) != np.sign(target):
+        return "flip"
+    return "increase" if abs(target) > abs(current) else "reduce"
+
+
+def model_call(provider, model, system, user):
+    """One chat call to any supported backend. Raises on any transport error."""
+    if provider == "anthropic":
+        import anthropic
+        msg = anthropic.Anthropic().messages.create(
+            model=model, max_tokens=200, temperature=0, system=system,
+            messages=[{"role": "user", "content": user}])
+        return msg.content[0].text
+    if provider in _OPENAI_STYLE:
+        return _chat_openai_style(provider, model, system, user)
+    raise ValueError("unknown provider %r" % provider)
+
+
+def parse_triage(text):
+    """Validate a model answer. Returns (decision, reason) or raises ValueError."""
+    if not isinstance(text, str) or "{" not in text:
+        raise ValueError("no JSON object in the answer")
+    obj = json.loads(text[text.find("{"):text.rfind("}") + 1])
+    dec = str(obj.get("decision", "")).strip().lower()
+    if dec not in FRACTION:
+        raise ValueError("decision %r is not execute / half / skip" % dec)
+    reason = str(obj.get("reason", "")).strip()
+    if not reason:
+        raise ValueError("no reason given")
+    return dec, reason[:400]
+
+
+class TriageLayer:
+    """Cost-aware trade triage. Plug into the engine with Engine(..., triage=TriageLayer('rule')).
+
+    The engine calls, at each close:
+        tw_exec = triage.apply(eng, di, day, x, tw_prop, nav, cost_inputs, mandatory)
+    and after each execution step:
+        triage.record_fills(day, delta, kind)    # kind 'trade' or 'compliance'
+
+    Pending orders: a decision is taken ONCE per order, an order being one
+    proposed target for one name. While the engine works it over several days
+    (participation cap), later calls see the same proposal and reuse the
+    approved target, so a half is never halved again and a skip is never
+    reversed. A new proposal (next formation, a re-tightening) is a new order.
+    """
+
+    def __init__(self, mode="rule", config=None, provider=None, model=None, backend=None,
+                 cache_dir=None):
+        assert mode in ("none", "rule", "ai")
+        self.mode = mode
+        self.name = "triage-" + mode
+        self.cfg = config or TriageConfig()
+        self.provider = provider or AGENT_PROVIDER
+        self.model = model or AGENT_MODEL
+        self.backend = backend or model_call          # injectable for tests
+        self.cache_dir = Path(cache_dir) if cache_dir else F.AGENT_CACHE / "triage"
+        self.reviewed_prop = None      # proposal (weight) last decided, per name
+        self.approved = None           # approved target (weight), per name
+        self.order_id = None
+        self.entry_di = None
+        self.prev_rank = {}
+        self.cur_rank = {}
+        self.rank_month = None
+        self.open_orders = {}          # name index -> log row of its live order
+        self.log = []
+        self.calls = self.cache_hits = 0
+
+    # ---- state ---------------------------------------------------------
+    def _init(self, n):
+        self.reviewed_prop = np.full(n, np.nan)
+        self.approved = np.zeros(n)
+        self.order_id = np.full(n, -1, dtype=np.int64)
+        self.entry_di = np.full(n, -1, dtype=np.int64)
+        self._next_order = 0
+
+    def _update_ranks(self, eng, month):
+        if month == self.rank_month:
+            return
+        G = eng.month_rows
+        pct = G["score"].rank(pct=True).values
+        self.prev_rank = self.cur_rank
+        self.cur_rank = dict(zip(G["pi"].values, pct))
+        self.rank_month = month
+
+    # ---- context -------------------------------------------------------
+    def context(self, eng, di, day, i, x, target, nav, est_bps, adv_i):
+        """Blinded, numeric, point in time. Exactly what a review sees."""
+        G = eng.month_rows.set_index("pi")
+        row = G.loc[i] if i in G.index else None
+        trade = target - x[i]
+        w = x / nav
+        sector = row["sector"] if row is not None else None
+        sec_net = None
+        if sector is not None:
+            in_sec = G.index[G["sector"] == sector]
+            sec_net = float(w[np.asarray(in_sec, dtype=int)].sum())
+        live = getattr(eng, "form_log_live", None)
+        fl = live[-1] if live else {}
+        beta_i = float(row["beta_use"]) if row is not None else None
+        ctx = {
+            "trade": {"kind": trade_kind(x[i], target), "direction": "buy" if trade > 0 else "sell",
+                      "current_weight_pct": round(100 * x[i] / nav, 3),
+                      "target_weight_pct": round(100 * target / nav, 3),
+                      "trade_pct_nav": round(100 * trade / nav, 3),
+                      "trade_usd_m": round(trade / 1e6, 2)},
+            "forecast": {"rank_pct_now": _r(self.cur_rank.get(i)),
+                         "rank_pct_last_formation": _r(self.prev_rank.get(i)),
+                         "note": "cross-sectional rank of the neutralised forecast, 1 = best; not a return"},
+            "holding_age_trading_days": int(di - self.entry_di[i]) if self.entry_di[i] >= 0 and x[i] != 0 else 0,
+            "cost": {"estimated_all_in_bps": round(est_bps, 1),
+                     "trade_over_adv_pct": round(100 * abs(trade) / adv_i, 2) if adv_i > 0 else None,
+                     "days_to_execute_at_10pct_adv": round(abs(trade) / (0.10 * adv_i), 1) if adv_i > 0 else None},
+            "book": {"gross_pct": round(100 * float(np.abs(w).sum()), 1),
+                     "net_pct": round(100 * float(w.sum()), 1),
+                     "net_after_trade_pct": round(100 * float(w.sum() + trade / nav), 1),
+                     "name_beta": _r(beta_i, 2),
+                     "beta_exposure_change_pct": _r(100 * beta_i * trade / nav, 3) if beta_i is not None else None,
+                     "leg_betas_used": [_r(fl.get("used_beta_long"), 2), _r(fl.get("used_beta_short"), 2)],
+                     "sector_net_weight_pct": _r(100 * sec_net, 2) if sec_net is not None else None},
+        }
+        if self.cfg.include_date:
+            ctx["date"] = str(pd.Timestamp(day).date())
+        return ctx
+
+    # ---- decisions -----------------------------------------------------
+    def classify(self, trade, nav, est_bps, adv_i):
+        if abs(trade) < self.cfg.min_trade_pct_nav * nav:
+            return "routine"
+        big = adv_i > 0 and abs(trade) / adv_i > self.cfg.review_adv_frac
+        if est_bps <= self.cfg.routine_cost_bps and not big:
+            return "routine"
+        return "review"
+
+    def rule_decision(self, ctx):
+        bps = ctx["cost"]["estimated_all_in_bps"]
+        kind = ctx["trade"]["kind"]
+        if bps > self.cfg.rule_skip_bps:
+            if kind in ("exit", "flip"):
+                return "half", "cost %.0f bp above %.0f; exit or flip halved, not skipped" % (bps, self.cfg.rule_skip_bps)
+            return "skip", "cost %.0f bp above %.0f" % (bps, self.cfg.rule_skip_bps)
+        if bps > self.cfg.rule_half_bps:
+            return "half", "cost %.0f bp above %.0f" % (bps, self.cfg.rule_half_bps)
+        return "execute", "cost %.0f bp at or below %.0f" % (bps, self.cfg.rule_half_bps)
+
+    def ai_decision(self, ctx):
+        """Returns (decision, reason, status, raw, cache_key). Never falls back to the rule."""
+        user = json.dumps(ctx, sort_keys=True)
+        key = hashlib.sha256(json.dumps(
+            [TRIAGE_VERSION, self.provider, self.model, TRIAGE_SYSTEM_PROMPT, user]).encode()).hexdigest()
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        path = self.cache_dir / (key + ".json")
+        raw = None
+        if path.exists():
+            rec = json.loads(path.read_text())
+            raw = rec["response"]
+            self.cache_hits += 1
+        else:
+            try:
+                raw = self.backend(self.provider, self.model, TRIAGE_SYSTEM_PROMPT, user)
+                self.calls += 1
+            except Exception as exc:              # transport, auth, quota
+                return self._failed("model call failed: %s" % type(exc).__name__, None, key)
+        try:
+            dec, reason = parse_triage(raw)
+        except Exception as exc:
+            return self._failed("invalid answer: %s" % exc, raw, key)
+        if not path.exists():                     # cache only answers that validated
+            path.write_text(json.dumps({"version": TRIAGE_VERSION, "provider": self.provider,
+                                        "model": self.model, "system": TRIAGE_SYSTEM_PROMPT,
+                                        "prompt": ctx, "response": raw}, indent=1))
+        return dec, reason, "ok", raw, key
+
+    def _failed(self, why, raw, key):
+        if self.cfg.on_failure == "raise":
+            raise TriageUnavailable(why)
+        return "execute", why, "ai_failed_executed", raw, key
+
+    # ---- the engine hook -----------------------------------------------
+    def apply(self, eng, di, day, x, tw_prop, nav, cost_inputs, mandatory, epoch=0):
+        """Return tw_exec: the targets the engine should work toward today.
+
+        epoch: a counter the engine raises at each formation / re-tightening.
+        A new epoch makes every live proposal a new order (new information
+        arrived), even if its value repeats, e.g. 'exit' proposed two months
+        running. Within an epoch, a repeated proposal is the same order."""
+        n = len(x)
+        if self.reviewed_prop is None:
+            self._init(n)
+            self.epoch_of = np.full(n, -1, dtype=np.int64)
+        # holding ages, from the actual book
+        opened = (x != 0) & (self.entry_di < 0)
+        self.entry_di[opened] = di
+        self.entry_di[x == 0] = -1
+        self._update_ranks(eng, str(eng.days.loc[di, "month"]))
+
+        hs, sig, adv = cost_inputs
+        changed = ~np.isclose(tw_prop, self.reviewed_prop, rtol=0, atol=1e-12)
+        live = (tw_prop != 0) | (x != 0)
+        changed |= live & (self.epoch_of != epoch)
+        for i in np.where(changed)[0]:
+            self.epoch_of[i] = epoch
+            target = tw_prop[i] * nav
+            trade = target - x[i]
+            self._next_order += 1
+            self.order_id[i] = self._next_order
+            self.reviewed_prop[i] = tw_prop[i]
+            self.open_orders.pop(i, None)         # fills from now on belong to the new order
+            if abs(trade) <= 1.0:
+                self.approved[i] = tw_prop[i]
+                continue
+            adv_i = float(adv[i]) if np.isfinite(adv[i]) else 1e7
+            one = np.zeros(n)
+            one[i] = trade
+            est_bps = 1e4 * eng.trade_cost(one, (hs, sig, np.where(np.isfinite(adv), adv, 1e7))) / abs(trade)
+            if mandatory[i]:
+                cls = "mandatory"
+            else:
+                cls = self.classify(trade, nav, est_bps, adv_i)
+            ctx = raw = key = None
+            status = "ok"
+            if cls != "review" or self.mode == "none":
+                dec, reason = "execute", ("%s trade" % cls if cls != "review" else "mode none: no triage")
+            else:
+                ctx = self.context(eng, di, day, i, x, target, nav, est_bps, adv_i)
+                if self.mode == "rule":
+                    dec, reason = self.rule_decision(ctx)
+                else:
+                    dec, reason, status, raw, key = self.ai_decision(ctx)
+            f = FRACTION[dec]
+            self.approved[i] = revised_target(x[i], target, f) / nav
+            row = {"date": str(pd.Timestamp(day).date()), "order_id": int(self.order_id[i]),
+                   "permno": int(eng.perms[i]), "mode": self.mode, "class": cls,
+                   "proposed_trade_usd": float(trade), "current_usd": float(x[i]),
+                   "proposed_target_usd": float(target), "est_cost_bps": float(est_bps),
+                   "decision": dec, "fraction": f, "approved_target_usd": float(self.approved[i] * nav),
+                   "reason": reason, "status": status, "model_input": ctx, "model_response": raw,
+                   "cache_key": key, "provider": self.provider if self.mode == "ai" else None,
+                   "model": self.model if self.mode == "ai" else None,
+                   "executed_usd": 0.0, "compliance_override_usd": 0.0}
+            self.log.append(row)
+            self.open_orders[i] = row
+        return self.approved.copy()
+
+    def record_fills(self, day, delta, kind):
+        """Attach what actually traded to the open order of each name."""
+        for i in np.where(np.abs(delta) > 1.0)[0]:
+            row = self.open_orders.get(i)
+            if row is None:
+                continue
+            key = "compliance_override_usd" if kind == "compliance" else "executed_usd"
+            row[key] += float(delta[i])
+
+    def write_log(self, tag):
+        F.OUT.mkdir(parents=True, exist_ok=True)
+        p = F.OUT / ("triage_%s.jsonl" % tag)
+        with open(p, "w") as fh:
+            fh.write(json.dumps({"_header": True, "version": TRIAGE_VERSION, "mode": self.mode,
+                                 "config": self.cfg.as_dict(), "provider": self.provider,
+                                 "model": self.model, "system_prompt": TRIAGE_SYSTEM_PROMPT}) + "\n")
+            for r in self.log:
+                fh.write(json.dumps(r, default=float) + "\n")
+        return p
+
+
+def _r(v, nd=3):
+    return None if v is None or (isinstance(v, float) and not np.isfinite(v)) else round(float(v), nd)
