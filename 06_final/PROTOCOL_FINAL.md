@@ -60,3 +60,43 @@ other two whatever it is. Triggers and the fixed rule are frozen in this commit.
 One run per configuration on 2021-01 .. 2026-08. Every configuration run is
 listed in `06_final/output/run_register.csv`, adopted or not. The headline is
 the configuration selected by D1-D2, not the best of the register.
+
+## Amendment 1 -- design window only, before any test-window run (2026-10-25)
+
+The first design-window run (`design_M`, 2019-2020) cost 10.3% of NAV a year.
+Diagnosing it on the design window alone led to four changes to construction
+and cost accounting. None reads a 2021-2026 number.
+
+1. **Execution is capped at 10% of ADV per name per day.** The original
+   capacity rule bounded the *position* at 3 days x 10% of ADV but let the
+   *trade* that builds it go through in one day, i.e. up to 30% of ADV. Orders
+   now carry over until filled (Section 3.3: desks keep participation below
+   10-20%).
+2. **Half-spread is capped by size group** (mega 3 bp, large 6, small 15,
+   micro 40). Half the Corwin-Schultz estimate gave a 36 bp median for mega
+   caps, an artefact of the estimator reading intraday volatility as spread.
+3. **No-trade band of +/-50% on continuing positions.** Two thirds of formation
+   turnover (20% of NAV a month against 7-9% for entries and exits) was
+   re-weighting names already held toward exact inverse-vol targets.
+4. **Gross 190% at formation, scaled back to 195% if a close exceeds 199.5%.**
+   At 195% a 2.5% market move breached the band 45 times in 24 months.
+
+The square-root impact coefficient stays at 0.7, the conservative end of the
+published range; the report shows 0.25 / 0.5 / 1.0 beside it.
+
+## Decisions taken (design window and pre-2021 event study)
+
+**D1 -> monthly (M).** All three frequencies pass the beta screen (daily beta
+-0.06 M, -0.09 W, -0.09 D; 63-day beta inside +/-0.30 on 100% of days for
+all three). Monthly is cheapest: 4.67% of NAV a year against 4.93% (W) and
+5.05% (D). Weekly and daily re-tightening bought no neutrality.
+
+**D2 -> do not adopt E.** 391 distress 8-Ks on tradable names, 2015-2020:
+mean market-adjusted return t+2..t+21 of -1.38%, monthly-clustered t = -1.49,
+short of the -2 bar. Items 3.01 (t -2.72) and 4.02 (t -2.10) clear it alone;
+picking them now would be choosing the rule after seeing the result, so E is
+run on the test window and reported, not adopted.
+
+**Register for the test window** (one run each, all reported):
+M (headline) - W - D - M+E - M+rule layer - M at $250m / $4bn starting NAV
+(capacity, descriptive) - M+agent layer (at the event, needs an API key).

@@ -75,8 +75,15 @@ HOUSE = {
     "commission_bps": 1.0,
     # half the Corwin-Schultz high-low spread (bidaskhl_21d), floored and
     # capped: the estimator overstates spreads for liquid names
-    "half_spread_floor_bps": 2.0,
+    "half_spread_floor_bps": 1.0,
     "half_spread_cap_bps": 50.0,
+    # Amendment 1 (design window): size-group ceilings on the half-spread
+    "half_spread_cap_by_size_bps": {"mega": 3.0, "large": 6.0, "small": 15.0,
+                                    "micro": 40.0, "nano": 75.0},
+    # Amendment 1: a continuing position within +/-50% of its new target is
+    # left alone -- two thirds of design-window formation turnover was
+    # re-weighting names already held
+    "no_trade_band": 0.50,
     # square-root impact: Y * sigma_daily * sqrt(trade / ADV)
     "impact_y": 0.7,
     # borrow, annual, by size group at formation (general collateral for

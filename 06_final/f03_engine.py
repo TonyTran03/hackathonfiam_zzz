@@ -48,8 +48,9 @@ import f02_signal as S  # noqa: E402
 H = F.HOUSE
 FIN = F.FINAL
 
-GROSS_TARGET = 1.95          # cushion so overnight drift cannot breach 200%
-GROSS_TRIGGER = 1.995        # above this at a close, scale back to target
+GROSS_TARGET = 1.90          # at formation: room for a 5% market move before 200%
+GROSS_TRIGGER = 1.995        # above this at a close, scale the whole book back
+GROSS_RESET = 1.95
 NET_TRIGGER = 0.48
 MIN_NAMES_TRIGGER = 210      # refill legs before the 200 floor is reached
 DISTRESS_ITEMS = {"4.01", "4.02", "1.03", "3.01"}
@@ -222,6 +223,21 @@ class Engine:
         target = np.zeros(len(self.perms))
         target[g.loc[lnames, "pi"].values] = lw * nav
         target[g.loc[snames, "pi"].values] = sw * nav
+        # no-trade band: a name held on the same side and within the band of
+        # its new target keeps its current size; the names that do trade are
+        # rescaled so each leg still carries its beta-matched notional
+        band = H["no_trade_band"]
+        same = (np.sign(x) == np.sign(target)) & (target != 0)
+        keep = same & (np.abs(x - target) <= band * np.abs(target))
+        for sgn, want in ((1, lplaced * nav), (-1, -splaced * nav)):
+            leg = np.sign(target) == sgn
+            kept = (x * (leg & keep)).sum()
+            free = leg & ~keep
+            tf = target[free].sum()
+            if tf != 0 and np.sign(want - kept) == np.sign(tf):
+                capd = g.set_index("pi")["cap"].reindex(np.where(free)[0]).values * nav
+                target[free] = np.clip(target[free] * (want - kept) / tf, -capd, capd)
+        target = np.where(keep, x, target)
         info = {"est_beta_long": est_l, "est_beta_short": est_s,
                 "used_beta_long": bl, "used_beta_short": bs,
                 "measured": measured, "long_notional": lplaced, "short_notional": splaced,
@@ -253,6 +269,8 @@ class Engine:
         adv = np.full(nP, np.nan)
         borrow = np.zeros(nP)
         month_in_book = None
+        tw = np.zeros(nP)
+        pending = np.zeros(nP, dtype=bool)
         rows, pos_rows, trades, anomalies, form_log = [], [], [], [], []
         acted_events = set()
         cum_month = np.ones(nP)      # running product of daily returns this month
@@ -292,6 +310,7 @@ class Engine:
                                   "position": x[i], "ret": float(r_use[i])})
             cum_month *= (1 + r_use)
 
+            x_open = x.copy()                  # positions that earn today
             longs, shorts = x > 0, x < 0
             lval, sval = x[longs].sum(), -x[shorts].sum()
             pnl_i = x * r_use
@@ -307,11 +326,15 @@ class Engine:
             # today's leg returns join the history only AFTER today's decision:
             # data through day t may form the book at the close of t+1
             today_leg = (d["mkt_ex"], long_r - rf, short_r - rf) if (lval > 0 and sval > 0) else None
-            for i in np.where(held)[0]:
-                pos_rows.append((day, int(self.perms[i]), pnl_i[i]))
+            hi_ = np.where(held & (x_open != 0))[0]
+            pos_rows.append(np.column_stack([np.full(len(hi_), di), self.perms[hi_],
+                                             x_open[hi_], r_use[hi_], pnl_i[hi_]]))
 
             # ---- 2. decide at the close ------------------------------
-            target = None
+            # tw: target weights (fraction of NAV); pending: names still being
+            # worked toward their target. A real desk does not fill a $6m order
+            # in one day in a name trading $20m, so execution is capped at
+            # MAX_PARTICIPATION of ADV per name per day and the rest carries.
             reason = None
             if d["is_formation"] and m_str in self.sig_sel:
                 target, info = self.form(di, m_str, x, nav)
@@ -325,47 +348,76 @@ class Engine:
                 b = g["size_grp"].map(H["borrow_bps"]).fillna(500.0).values
                 b = b + np.where(g["ivol_top_decile"].values, H["borrow_hard_bps"], 0.0)
                 borrow[g["pi"].values] = b / 1e4
+                tw = target / nav
+                pending = (tw != 0) | (x != 0)
                 month_in_book = m_str
                 reason = "formation"
             elif month_in_book is not None and (
                     (self.freq == "W" and d["is_week_start"]) or self.freq == "D"):
-                target = self.retighten(di, x, nav)
-                reason = "retighten"
+                t2 = self.retighten(di, x, nav)
+                if t2 is not None:
+                    chg = np.abs(t2 - x) > 1.0
+                    tw = np.where(chg, t2 / nav, tw)
+                    pending = pending | chg
+                    reason = "retighten"
 
-            base = x if target is None else target
-            proposals = []
-            if self.overlay == "E" and month_in_book is not None:
-                base, hits = self.event_exits(day, base, acted_events)
-                if hits:
-                    proposals.append(("event_exit", hits))
-                    reason = reason or "event"
-            if self.layer is not None and month_in_book is not None:
-                new = self.layer.review(self, di, day, base, nav)
-                if new is not None:
-                    base = new
-                    reason = reason or "risk_layer"
+            if month_in_book is not None:
+                want = np.where(pending, tw * nav, x)
+                if self.overlay == "E":
+                    want2, hits = self.event_exits(day, want, acted_events)
+                    if hits:
+                        chg = want2 != want
+                        tw = np.where(chg, want2 / nav, tw); pending = pending | chg
+                        want = want2
+                        reason = reason or "event"
+                if self.layer is not None:
+                    new = self.layer.review(self, di, day, want, nav)
+                    if new is not None:
+                        chg = np.abs(new - want) > 1.0
+                        tw = np.where(chg, new / nav, tw); pending = pending | chg
+                        want = new
+                        if chg.any():
+                            reason = reason or "risk_layer"
 
-            # ---- 3. enforce in code ----------------------------------
-            base, why = self.enforce(base, nav, di)
+            # ---- 3. trade toward the targets, inside the participation cap
+            cost, turnover = 0.0, 0.0
+            if month_in_book is not None and pending.any():
+                adv_use = np.where(np.isfinite(adv), adv, 1e7)
+                want = np.where(pending, tw * nav, x)
+                lim = H["max_participation"] * adv_use
+                delta = np.clip(want - x, -lim, lim)
+                # an exit of a name we no longer want, or a target of zero, is
+                # still worked at the cap; nothing is forced except by step 4
+                done = np.abs(want - (x + delta)) <= 1.0
+                pending = pending & ~done
+                if np.abs(delta).sum() > 1.0:
+                    c = self.trade_cost(delta, (hs, sig, adv_use))
+                    cash -= delta.sum() + c
+                    cost += c
+                    turnover += 0.5 * np.abs(delta).sum() / nav
+                    x = x + delta
+                    x[np.abs(x) < 1.0] = 0.0
+                    for i in np.where(np.abs(delta) > 1.0)[0]:
+                        trades.append((day, int(self.perms[i]), float(delta[i]),
+                                       float(delta[i] / adv_use[i]), reason or "working"))
+                    nav = cash + x.sum()
+
+            # ---- 4. enforce the mandate on the ACTUAL book, in code -----
+            fixed, why = self.enforce(x.copy(), nav, di, tw)
+            delta = fixed - x
+            if np.abs(delta).sum() > 1.0:
+                adv_use = np.where(np.isfinite(adv), adv, 1e7)
+                c = self.trade_cost(delta, (hs, sig, adv_use))
+                cash -= delta.sum() + c
+                cost += c
+                turnover += 0.5 * np.abs(delta).sum() / nav
+                for i in np.where(np.abs(delta) > 1.0)[0]:
+                    trades.append((day, int(self.perms[i]), float(delta[i]),
+                                   float(delta[i] / adv_use[i]), "compliance:" + why))
+                x = fixed
+                nav = cash + x.sum()
             if why:
                 reason = (reason + "+" if reason else "") + why
-
-            # ---- 4. trade --------------------------------------------
-            delta = base - x
-            if np.abs(delta).sum() > 1.0:
-                ok = np.isfinite(adv)
-                adv_use = np.where(ok, adv, 1e7)
-                cost = self.trade_cost(delta, (hs, sig, adv_use))
-                cash -= delta.sum() + cost
-                x = base
-                turnover = 0.5 * np.abs(delta).sum() / nav
-                nz = np.where(np.abs(delta) > 1.0)[0]
-                for i in nz:
-                    trades.append((day, int(self.perms[i]), float(delta[i]),
-                                   float(delta[i] / adv_use[i]) if ok[i] else np.nan, reason))
-                nav = cash + x.sum()
-            else:
-                cost, turnover = 0.0, 0.0
 
             if today_leg is not None:
                 self.leg_hist.append(today_leg)
@@ -384,7 +436,10 @@ class Engine:
             })
 
         self.daily = pd.DataFrame(rows)
-        self.pnl = pd.DataFrame(pos_rows, columns=["date", "permno", "pnl"])
+        pr = np.vstack(pos_rows) if pos_rows else np.zeros((0, 5))
+        self.pnl = pd.DataFrame(pr, columns=["di", "permno", "x", "r", "pnl"])
+        self.pnl["date"] = self.days["date"].values[self.pnl["di"].astype(int)]
+        self.pnl["permno"] = self.pnl["permno"].astype(int)
         self.trades = pd.DataFrame(trades, columns=["date", "permno", "delta", "adv_frac", "reason"])
         self.anomalies = pd.DataFrame(anomalies)
         self.form_log = pd.DataFrame(form_log)
@@ -450,31 +505,36 @@ class Engine:
         return base, hits
 
     # ---- hard constraints, in code -----------------------------------
-    def enforce(self, base, nav, di):
+    def enforce(self, base, nav, di, tw=None):
+        """The mandate, applied to the actual end-of-day book."""
         why = []
         w = base / nav
-        # 5% single-name cap (and house cap only at formation)
         over = np.abs(w) > FIN["max_single_weight"]
         if over.any():
             w[over] = np.sign(w[over]) * FIN["max_single_weight"]
             why.append("cap5")
+        n = int((w != 0).sum())
+        if n > FIN["max_positions"] and tw is not None:
+            # finish the exits we were working, smallest first
+            exits = np.where((w != 0) & (tw == 0))[0]
+            exits = exits[np.argsort(np.abs(w[exits]))][:n - FIN["max_positions"]]
+            w[exits] = 0.0
+            why.append("names>500")
         gross = np.abs(w).sum()
         if gross > GROSS_TRIGGER:
-            w *= GROSS_TARGET / gross
+            w *= GROSS_RESET / gross
             why.append("gross")
         net = w.sum()
         if abs(net) > NET_TRIGGER:
             L, Sx = w[w > 0].sum(), -w[w < 0].sum()
             tgt = np.sign(net) * (NET_TRIGGER - 0.03)
-            # shrink the heavier leg until net is back inside
             if net > 0:
                 w[w > 0] *= (Sx + tgt) / L
             else:
                 w[w < 0] *= (L - tgt) / Sx
             why.append("net")
-        n = int((w != 0).sum())
-        if n < MIN_NAMES_TRIGGER:
-            why.append("names<%d" % MIN_NAMES_TRIGGER)   # refilled at next formation
+        if int((w != 0).sum()) < MIN_NAMES_TRIGGER:
+            why.append("names<%d" % MIN_NAMES_TRIGGER)
         return w * nav, "+".join(why)
 
 
