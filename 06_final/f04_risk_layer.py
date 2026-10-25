@@ -248,3 +248,41 @@ def count_triggers(eng_cls, window="test"):
     e = eng_cls(window, "M", None, layer=lay).run(quiet=True)
     df = pd.DataFrame(lay.log)
     return df
+
+
+def reidentification_test(n=50, model=AGENT_MODEL, seed=0):
+    """Section 7: how often can the model name the company from what it is
+    shown? Samples cached agent prompts, asks for the ticker, and scores the
+    answer against the permno's true ticker. Needs ANTHROPIC_API_KEY.
+
+        python -c "import f04_risk_layer as R; print(R.reidentification_test())"
+    """
+    import random
+    import anthropic
+    from common import config as C
+    files = sorted(F.AGENT_CACHE.glob("*.json"))
+    if not files:
+        raise SystemExit("no cached agent prompts yet -- run the agent layer first")
+    random.Random(seed).shuffle(files)
+    log = [json.loads(l) for l in open(F.OUT / "decisions_test_M_agent.jsonl")]
+    by_prompt = {}
+    for r in log:
+        by_prompt.setdefault(json.dumps(r["inputs"], sort_keys=True, default=float), r["permno"])
+    panel = pd.read_parquet(C.MODEL_TABLE, columns=["permno", "ticker"]).dropna()
+    tick = panel.groupby("permno")["ticker"].agg(lambda s: set(s))
+    client = anthropic.Anthropic()
+    rows = []
+    for f in files[:n]:
+        rec = json.loads(f.read_text())
+        q = ("Here is the numeric context a risk analyst saw for one US stock position:\n"
+             + json.dumps(rec["prompt"]) + "\nWhich company is this? Answer with a ticker "
+             "only, or UNKNOWN.")
+        a = client.messages.create(model=model, max_tokens=10, temperature=0,
+                                   messages=[{"role": "user", "content": q}]).content[0].text.strip()
+        rows.append({"file": f.name, "answer": a})
+    df = pd.DataFrame(rows)
+    df["unknown"] = df["answer"].str.upper().str.contains("UNKNOWN")
+    out = F.OUT / "reidentification_test.csv"
+    df.to_csv(out, index=False)
+    return {"n": len(df), "share_declined": float(df["unknown"].mean()),
+            "note": "answers are matched to true tickers by hand from decisions log; see %s" % out.name}

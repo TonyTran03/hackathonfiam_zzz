@@ -75,7 +75,8 @@ def load_inputs(window):
             .reindex(index=[prev_day] + list(days["date"]), columns=perms))
     P = (dsf.pivot(index="date", columns="permno", values="prc")
             .reindex(index=[prev_day] + list(days["date"]), columns=perms).abs())
-    P = P.replace([np.inf, -np.inf], np.nan).ffill()
+    # NOT forward-filled: a name with no price today cannot be traded today
+    P = P.replace([np.inf, -np.inf], np.nan)
     last = pd.read_parquet(F.DATA / "last_day.parquet")["last_day"].reindex(perms)
     return days, sig, perms, R.values, P.values, last.values
 
@@ -126,11 +127,14 @@ def leg_weights(vol, caps, notional):
 # ---------------------------------------------------------------- engine
 class Engine:
     def __init__(self, window, freq="M", overlay=None, layer=None, seed_legs=None,
-                 label=None, cost_scale=1.0):
+                 label=None, cost_scale=1.0, start_nav=None, cost_mode="sqrt:0.7",
+                 borrow_mode="model"):
         self.window, self.freq, self.overlay, self.layer = window, freq, overlay, layer
         self.label = label or "%s_%s%s%s" % (window, freq, "_" + overlay if overlay else "",
                                              "_" + layer.name if layer else "")
         self.cost_scale = cost_scale
+        self.start_nav = start_nav or FIN["start_nav"]
+        self.cost_mode, self.borrow_mode = cost_mode, borrow_mode
         (self.days, sig, self.perms, self.R, self.P, self.last) = load_inputs(window)
         self.pidx = {p: i for i, p in enumerate(self.perms)}
         self.sig_sel = {m: g.set_index("permno") for m, g in
@@ -164,7 +168,8 @@ class Engine:
         # trading on the formation day requires a price yesterday and today
         pr_prev, pr_now = self.P[di], self.P[di + 1]   # row 0 is the extra day
         g["px_prev"], g["px_now"] = pr_prev[g["pi"]], pr_now[g["pi"]]
-        g = g[g["px_prev"].notna() & g["px_now"].notna()]
+        alive = np.isfinite(self.R[di + 1][g["pi"].values])     # traded today
+        g = g[g["px_prev"].notna() & g["px_now"].notna() & alive]
         # the mandate measures the short floor AT FORMATION; check it on both
         # yesterday's close (decision) and today's (execution)
         me_prev = g["shares"] * g["px_prev"]
@@ -250,10 +255,26 @@ class Engine:
 
     # ---- costs -------------------------------------------------------
     def trade_cost(self, delta, g_cost):
-        """commission + half-spread + Y * sigma * sqrt(|trade| / ADV), in $"""
+        """Cost of a day's trades in $. Modes (all construction-layer only):
+          sqrt:Y    commission + half-spread + Y * sigma * sqrt(|trade| / ADV)
+                    (Y = 0.7 is the pre-registered headline)
+          almgren   commission + half-spread + Almgren et al. (2005) impact
+                    calibrated on Citigroup institutional orders, one-day
+                    execution: 0.142 sigma (q)^0.6 temporary + 0.5 x 0.314
+                    sigma q permanent, q = |trade| / ADV
+          flat:B    B bps on every dollar traded, nothing else
+        """
         a = np.abs(delta)
         hs, sig, adv = g_cost
-        imp = H["impact_y"] * sig * np.sqrt(np.divide(a, adv, out=np.zeros_like(a), where=adv > 0))
+        q = np.divide(a, adv, out=np.zeros_like(a), where=adv > 0)
+        mode = self.cost_mode
+        if mode.startswith("flat:"):
+            return float(a.sum()) * float(mode[5:]) / 1e4
+        if mode == "almgren":
+            imp = 0.142 * sig * q ** 0.6 + 0.5 * 0.314 * sig * q
+        else:
+            y = float(mode[5:]) if mode.startswith("sqrt:") else H["impact_y"]
+            imp = y * sig * np.sqrt(q)
         bps = H["commission_bps"] / 1e4 + hs + imp
         return float((a * bps).sum()) * self.cost_scale
 
@@ -262,7 +283,7 @@ class Engine:
         t0 = time.time()
         nP = len(self.perms)
         x = np.zeros(nP)
-        nav = FIN["start_nav"]
+        nav = self.start_nav
         cash = nav
         hs = np.full(nP, H["half_spread_cap_bps"] / 1e4)
         sig = np.full(nP, 0.03)
@@ -271,6 +292,9 @@ class Engine:
         month_in_book = None
         tw = np.zeros(nP)
         pending = np.zeros(nP, dtype=bool)
+        gone = np.zeros(nP, dtype=bool)
+        shares_now = np.full(nP, np.nan)
+        targets_log = []
         rows, pos_rows, trades, anomalies, form_log = [], [], [], [], []
         acted_events = set()
         cum_month = np.ones(nP)      # running product of daily returns this month
@@ -304,6 +328,9 @@ class Engine:
                                   "basis": "monthly CRSP remainder" if np.isfinite(R_m) else "default"})
                 cash += x[i] * (1 + s)        # close: long sells, short buys back
                 x[i] = 0.0
+                tw[i] = 0.0                   # and never trade it again
+                pending[i] = False
+                gone[i] = True
             big = held & (np.abs(r_use) > 0.5)
             for i in np.where(big)[0]:
                 anomalies.append({"date": day, "permno": int(self.perms[i]), "kind": "move>50%",
@@ -336,7 +363,9 @@ class Engine:
             # in one day in a name trading $20m, so execution is capped at
             # MAX_PARTICIPATION of ADV per name per day and the rest carries.
             reason = None
-            if d["is_formation"] and m_str in self.sig_sel:
+            skip = (self.freq in ("B", "Q") and month_in_book is not None
+                    and (month.month - 1) % (2 if self.freq == "B" else 3) != 0)
+            if d["is_formation"] and m_str in self.sig_sel and not skip:
                 target, info = self.form(di, m_str, x, nav)
                 info.update({"date": day, "month": m_str, "nav": nav})
                 form_log.append(info)
@@ -345,11 +374,21 @@ class Engine:
                 hs[g["pi"].values] = g["half_spread"].values
                 sig[g["pi"].values] = g["rvol_21d"].clip(0.005, 0.2).values
                 adv[g["pi"].values] = g["dolvol_126d"].values
-                b = g["size_grp"].map(H["borrow_bps"]).fillna(500.0).values
-                b = b + np.where(g["ivol_top_decile"].values, H["borrow_hard_bps"], 0.0)
+                if self.borrow_mode == "flat":      # Section 7 alternative
+                    b = np.where(g["size_grp"].isin(["mega", "large"]).values,
+                                 H["flat_borrow_large_bps"], H["flat_borrow_other_bps"])
+                else:
+                    b = g["size_grp"].map(H["borrow_bps"]).fillna(500.0).values
+                    b = b + np.where(g["ivol_top_decile"].values, H["borrow_hard_bps"], 0.0)
                 borrow[g["pi"].values] = b / 1e4
                 tw = target / nav
+                nz_ = np.where(tw != 0)[0]
+                targets_log.append(pd.DataFrame({
+                    "date": day, "month": m_str, "permno": self.perms[nz_], "target_weight": tw[nz_],
+                    "me_formation": (g.set_index("pi")["shares"] * g.set_index("pi")["px_now"]).reindex(nz_).values,
+                    "dolvol_126d": adv[nz_], "target_usd": target[nz_]}))
                 pending = (tw != 0) | (x != 0)
+                shares_now[g["pi"].values] = g["shares"].values
                 month_in_book = m_str
                 reason = "formation"
             elif month_in_book is not None and (
@@ -385,7 +424,14 @@ class Engine:
                 adv_use = np.where(np.isfinite(adv), adv, 1e7)
                 want = np.where(pending, tw * nav, x)
                 lim = H["max_participation"] * adv_use
+                # only names that printed a price today can be traded today
+                lim = np.where(np.isfinite(r) & ~gone, lim, 0.0)
                 delta = np.clip(want - x, -lim, lim)
+                # every day a short is extended is treated as a formation date:
+                # no extension in a name below $500m at today's close
+                me_now = shares_now * self.P[di + 1]
+                extend_short = (delta < 0) & (x + delta < 0) & ~(me_now >= FIN["short_min_me_musd"])
+                delta = np.where(extend_short, np.maximum(delta, np.minimum(0.0, -x)), delta)
                 # an exit of a name we no longer want, or a target of zero, is
                 # still worked at the cap; nothing is forced except by step 4
                 done = np.abs(want - (x + delta)) <= 1.0
@@ -404,7 +450,8 @@ class Engine:
 
             # ---- 4. enforce the mandate on the ACTUAL book, in code -----
             fixed, why = self.enforce(x.copy(), nav, di, tw)
-            delta = fixed - x
+            delta = np.where(np.isfinite(r), fixed - x, 0.0)
+            fixed = x + delta
             if np.abs(delta).sum() > 1.0:
                 adv_use = np.where(np.isfinite(adv), adv, 1e7)
                 c = self.trade_cost(delta, (hs, sig, adv_use))
@@ -443,6 +490,7 @@ class Engine:
         self.trades = pd.DataFrame(trades, columns=["date", "permno", "delta", "adv_frac", "reason"])
         self.anomalies = pd.DataFrame(anomalies)
         self.form_log = pd.DataFrame(form_log)
+        self.targets = pd.concat(targets_log, ignore_index=True) if targets_log else pd.DataFrame()
         self.positions_last = x
         if not quiet:
             print("[%s] %d days, ending NAV $%.3fbn, %.0fs"
@@ -547,6 +595,7 @@ def save(e, tag=None):
     e.pnl.to_parquet(d / "pnl.parquet", index=False)
     e.trades.to_parquet(d / "trades.parquet", index=False)
     e.anomalies.to_parquet(d / "anomalies.parquet", index=False)
+    e.targets.to_parquet(d / "targets.parquet", index=False)
     fl = e.form_log.copy()
     fl["measured"] = fl["measured"].astype(str)
     fl.to_parquet(d / "formations.parquet", index=False)
@@ -560,7 +609,7 @@ def quick_stats(daily, label=""):
     y = daily["ret"] - daily["rf"]
     beta = np.linalg.lstsq(X, y, rcond=None)[0][1]
     yrs = len(daily) / 252
-    cagr = (daily["nav"].iloc[-1] / FIN["start_nav"]) ** (1 / yrs) - 1
+    cagr = (daily["nav"].iloc[-1] / daily["nav"].iloc[0] * (1 + daily["ret"].iloc[0])) ** (1 / yrs) - 1
     to = daily["turnover"].sum() / yrs
     cost = daily["cost"].sum() / daily["nav"].mean() / yrs
     print("  %-28s IR %+.2f  beta %+.3f  CAGR %+.2f%%  turnover %.0f%%/yr  cost %.2f%%/yr"
@@ -571,9 +620,26 @@ def quick_stats(daily, label=""):
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--window", default="design", choices=["design", "test"])
-    ap.add_argument("--freq", default="M", choices=["M", "W", "D"])
+    ap.add_argument("--freq", default="M", choices=["M", "W", "D", "B", "Q"],
+                    help="B / Q: form every 2nd / 3rd month (post-hoc, see run register)")
     ap.add_argument("--overlay", default=None, choices=[None, "E"])
+    ap.add_argument("--layer", default=None, choices=[None, "rule", "agent"])
+    ap.add_argument("--nav", type=float, default=None, help="starting NAV, US$")
+    ap.add_argument("--cost", default="sqrt:0.7", help="sqrt:Y | almgren | flat:BPS")
+    ap.add_argument("--borrow", default="model", choices=["model", "flat"])
     a = ap.parse_args()
-    e = Engine(a.window, a.freq, a.overlay).run()
+    lay = None
+    if a.layer:
+        import f04_risk_layer as RL
+        lay = RL.RuleLayer() if a.layer == "rule" else RL.AgentLayer()
+    label = None
+    if a.nav:
+        label = "%s_%s_nav%.0fm" % (a.window, a.freq, a.nav / 1e6)
+    if a.cost != "sqrt:0.7" or a.borrow != "model":
+        label = "%s_%s_cost-%s_borrow-%s" % (a.window, a.freq, a.cost.replace(":", ""), a.borrow)
+    e = Engine(a.window, a.freq, a.overlay, layer=lay, label=label, start_nav=a.nav,
+               cost_mode=a.cost, borrow_mode=a.borrow).run()
     save(e)
+    if lay is not None:
+        lay.write_log(e.label)
     quick_stats(e.daily, e.label)
