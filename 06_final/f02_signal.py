@@ -109,9 +109,12 @@ def build(which):
                      .transform(lambda s: s.rolling(H["smooth_months"], min_periods=1).mean()))
 
     df["short_ok_eom"] = df["me"] >= F.FINAL["short_min_me_musd"] * H["short_floor_cushion"]
-    df["half_spread"] = (0.5 * df["bidaskhl_21d"]).clip(
-        H["half_spread_floor_bps"] / 1e4, H["half_spread_cap_bps"] / 1e4).fillna(
-        H["half_spread_cap_bps"] / 1e4)
+    # Corwin-Schultz is biased up when true spreads are tiny (it reads
+    # intraday volatility as spread): half of it gives a 36 bp median for MEGA
+    # caps in 2019-2020. So it is capped by a size-group ceiling as well.
+    size_cap = df["size_grp"].map(H["half_spread_cap_by_size_bps"]).fillna(H["half_spread_cap_bps"])
+    df["half_spread"] = np.minimum(0.5 * df["bidaskhl_21d"].fillna(1.0), size_cap / 1e4).clip(
+        lower=H["half_spread_floor_bps"] / 1e4)
     df["ivol_top_decile"] = df.groupby("target_month")["ivol_capm_252d"].transform(
         lambda s: s >= s.quantile(0.9))
     df = df.rename(columns={C.TARGET: "stub_ret"})
