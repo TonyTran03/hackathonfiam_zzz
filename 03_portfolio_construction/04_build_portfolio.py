@@ -50,10 +50,42 @@ OUT = C.PROCESSED_DIR / "holdings.parquet"
 SUBMISSION_CSV = C.ROOT / "05_submission" / "holdings.csv"
 
 MODEL = "avg"
-N_PER_LEG = 100
+# 300 names, not the 200 we ran in round one. The finals floor is 200, so this
+# is a choice rather than a requirement, and it was made on the validation
+# window: among books that pass the liquidity screen below, 300 names scores
+# -0.90 against -0.95 at 200 and -1.11 at 400. It is also the best of them on
+# the evaluation period (+0.91 against +0.82 and +0.88), so for once the two
+# windows agree and nothing has to be argued away. The mechanism is the
+# fundamental law -- more independent bets at the same skill per bet -- and
+# more names also means smaller orders, which is the capacity problem.
+N_PER_LEG = 150
 GROSS_TARGET = 2.00       # 200% of capital, the limit
 MAX_WEIGHT = 0.02         # 2% of capital in any one name
 NET_CAP = 0.30            # room to reach beta neutrality; rules allow +/-50%
+
+# --------------------------------------------------- the finals mandate -----
+# The final mandate names a fund size, and naming it changes the problem. At
+# US$1bn and 200% gross we deploy US$2bn; across 200 names that is US$10m a
+# position. Measured against the book we submitted in round one, the median
+# LONG position was 36% of its name's average daily volume and 63% of
+# positions sat above 20% -- the level professional desks stay under. One of
+# our ten largest longs, United States Lime & Minerals, would have taken 32
+# days of the stock's entire volume to build. That book cannot be traded at
+# this size, and a backtest of it is fiction.
+#
+# The remedy is a screen, and the universe absorbs it comfortably: requiring
+# enough volume to build a position in BUILD_DAYS at PARTICIPATION of daily
+# volume still leaves roughly 1,300 of the 1,960 eligible names at 200
+# holdings, and 1,600 at 400. We were never short of liquid candidates. We
+# simply never looked at liquidity when choosing.
+FUND_USD = 1_000_000_000.0   # the endowment the finals mandate specifies
+PARTICIPATION = 0.10         # the share of a day's volume we will be
+BUILD_DAYS = 5.0             # trading days allowed to build or exit
+# A name is tradable when  target position <= PARTICIPATION * BUILD_DAYS * ADV.
+MIN_SHORT_ME = 500.0         # US$m market-cap floor on the short leg (mandate)
+LIQUIDITY_SCREEN = True      # False reproduces the round-one universe
+ADV_COL = "dolvol_126d"      # 126-day average daily dollar volume, not the
+                             # month's total: round one confused the two
 
 # Turnover controls. The unsmoothed book traded 221% of capital a month and
 # broke even at 34 bps -- too thin a margin for a long leg that is two thirds
@@ -131,6 +163,34 @@ def screen(pred, quiet=False):
                 & (~pred["size_grp"].isin(EXCLUDE_SIZE_GROUPS))
                 & pred[BETA_COL].notna() & pred[VOL_COL].notna()].copy()
     pred[BETA_COL] = pred[BETA_COL].clip(-0.5, 3.5)   # trim estimation noise
+
+    if LIQUIDITY_SCREEN:
+        # A name earns its place only if the position we would actually take
+        # can be built and unwound inside BUILD_DAYS without us being more
+        # than PARTICIPATION of the volume. The threshold moves with the book:
+        # more names means smaller positions means a wider investable set,
+        # which is one of the arguments for the higher position count.
+        target = GROSS_TARGET * FUND_USD / (2 * N_PER_LEG)
+        need = target / (PARTICIPATION * BUILD_DAYS)
+        liquid = pred[ADV_COL].notna() & (pred[ADV_COL] >= need)
+        if not quiet:
+            print("liquidity screen: US$%.0fbn fund, %d names, US$%.1fm a "
+                  "position" % (FUND_USD / 1e9, 2 * N_PER_LEG, target / 1e6))
+            print("  needs %s >= US$%.1fm to build in %.0f days at %.0f%% of "
+                  "volume" % (ADV_COL, need / 1e6, BUILD_DAYS,
+                              100 * PARTICIPATION))
+            print("  %s of %s stock-months qualify (%.0f%%)"
+                  % (format(int(liquid.sum()), ","), format(len(pred), ","),
+                     100 * liquid.mean()))
+        pred = pred[liquid].copy()
+
+    # The mandate's short-side floor. Applied as a column rather than a filter
+    # because it binds on one leg only: these names stay eligible to own.
+    pred["shortable"] = pred["me"] >= MIN_SHORT_ME
+    if not quiet:
+        print("short-side floor: US$%.0fm market cap -- %.1f%% of the screened "
+              "universe is shortable" % (MIN_SHORT_ME,
+                                         100 * pred["shortable"].mean()))
     per_month = pred.groupby("target_month").size()
     if not quiet:
         print("tradability screen: price >= $%.0f, no %s, beta and vol present"
@@ -175,8 +235,15 @@ def smooth_scores(pred, months):
     return sm.reindex(pred.index)
 
 
-def select(scores, held_long, held_short, buffer_mult=None):
-    """Top/bottom N, but a held name survives inside the wider buffer band."""
+def select(scores, held_long, held_short, buffer_mult=None, shortable=None):
+    """Top/bottom N, but a held name survives inside the wider buffer band.
+
+    `shortable` is the mandate's US$500m market-cap floor, and it binds on one
+    side only: a name below the floor may still be owned, it just cannot be
+    sold short. Applying it here rather than in the screen keeps those names
+    available to the long leg, which is the whole point of a floor that the
+    rules place on the short side alone.
+    """
     order = scores.sort_values(ascending=False)
     wide = int(N_PER_LEG * (buffer_mult if buffer_mult is not None else BUFFER_MULT))
     long_zone, short_zone = set(order.head(wide).index), set(order.tail(wide).index)
@@ -186,7 +253,8 @@ def select(scores, held_long, held_short, buffer_mult=None):
         :max(0, N_PER_LEG - len(longs))]
     longs = longs[:N_PER_LEG]
 
-    rev = order.index[::-1]
+    ok = set(order.index) if shortable is None else set(shortable[shortable].index)
+    rev = [i for i in order.index[::-1] if i in ok]
     shorts = [i for i in rev if i in held_short and i in short_zone]
     shorts += [i for i in rev if i not in shorts and i not in longs][
         :max(0, N_PER_LEG - len(shorts))]
@@ -297,7 +365,8 @@ def make_book(pred, smooth_months, buffer_mult, market=None):
     for month, g in pred.groupby("target_month", sort=True):
         held_l = set(g.index[g["permno"].isin(held_long)])
         held_s = set(g.index[g["permno"].isin(held_short)])
-        longs, shorts = select(g["score"], held_l, held_s, buffer_mult)
+        longs, shorts = select(g["score"], held_l, held_s, buffer_mult,
+                               shortable=g.get("shortable"))
         if SECTOR_COUNT_CAP is not None:
             sector = g["gics"].astype(str).str[:2].where(g["gics"].notna(), "na")
             longs, shorts = cap_sectors(longs, shorts, g["score"], sector, SECTOR_COUNT_CAP)
