@@ -1,3 +1,5 @@
+> For the final 06_final exports, use [FINAL_REPORT.md](FINAL_REPORT.md) and final_report.py. The instructions below describe the older round-one baseline.
+
 # FIAM reporting — stage 1
 
 This standalone module implements the first reporting milestone on the actual first-round submission. No model retraining, trading or GitHub changes are required.
