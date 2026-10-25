@@ -57,7 +57,7 @@ def holding_period(pnl):
            | p["side"].ne(p["side"].shift()))
     p["run"] = brk.cumsum()
     runs = p.groupby("run").agg(days=("di", "size"), size=("x", lambda v: np.abs(v).mean()))
-    return float(np.average(runs["days"], weights=runs["days"] * runs["size"])), runs
+    return float(np.average(runs["days"], weights=runs["size"])), runs
 
 
 def monthly(d):
@@ -127,8 +127,9 @@ def table(run, sig):
         ("Beta vs S&P 500 - daily, Dimson lag 0+1", "(s.e. of lag-0 term)",
          "%.3f (%.3f)" % (cd[1] + cd[2], sd[1]), "n/a", "n/a"),
         ("Sharpe ratio (daily, net of all costs)", "annualised",
-         np.sqrt(252) * ex.mean() / ex.std(), np.sqrt(252) * (d["hurdle"] - d["rf"]).mean()
-         / max((d["hurdle"] - d["rf"]).std(), 1e-12), np.sqrt(252) * mk.mean() / mk.std()),
+         np.sqrt(252) * ex.mean() / ex.std(), "n/a (riskless premium)", np.sqrt(252) * mk.mean() / mk.std()),
+        ("Sharpe ratio (daily, before costs)", "annualised",
+         np.sqrt(252) * exg.mean() / exg.std(), "n/a", "n/a"),
         ("Information ratio vs T-bill + 4%, before costs", "annualised (daily)",
          np.sqrt(252) * act_g.mean() / act_g.std(), "n/a", "n/a"),
         ("Information ratio vs T-bill + 4%, before costs", "annualised (monthly)",
@@ -155,7 +156,9 @@ def table(run, sig):
         ("One-way turnover", "% per rebalance / annualised",
          "%.1f / %.0f" % (100 * reb["turnover"].mean(), 100 * d["turnover"].sum() / yrs), "n/a", "n/a"),
         ("Rebalances", "per year", n_reb_year, "n/a", "n/a"),
-        ("Average holding period", "trading days", hp, "n/a", "n/a"),
+        ("Average holding period", "trading days, measured", hp, "n/a", "n/a"),
+        ("Holding period, approximation", "avg gross / annual turnover x 252",
+         252 * d["gross"].iloc[1:].mean() / (d["turnover"].sum() / yrs), "n/a", "n/a"),
         ("Average position size", "US$ million",
          (pnl["x"].abs().mean()) / 1e6, "n/a", "n/a"),
         ("Short book median market cap", "US$ million", sh, "n/a", "n/a"),
@@ -302,6 +305,7 @@ def exhibits(run, sig, outdir, m):
     ax[0].set_title("Short book: market cap at formation (min %.0f)" % shorts["me_form"].min())
     ax[0].legend(frameon=False, fontsize=8)
     ax[1].hist(shorts["dolvol_126d"] / 1e6, bins=np.logspace(0, 4.5, 40), color=NAVY)
+    ax[1].axvline(np.median(shorts["dolvol_126d"]) / 1e6, color=RED, ls=":", label="median")
     ax[1].set_xscale("log"); ax[1].set_xlabel("average daily dollar volume, US$m")
     ax[1].set_title("Short book: ADV at formation")
     for a in ax:
@@ -309,7 +313,7 @@ def exhibits(run, sig, outdir, m):
     fig.tight_layout(); fig.savefig(fig_dir / "short_book.png", dpi=160); plt.close(fig)
 
     fig, ax = plt.subplots(figsize=(7, 3.6))
-    b = np.linspace(0, 3.2, 33)
+    b = np.linspace(0, 0.4, 41)
     ax.hist(longs["days_adv"], bins=b, alpha=0.7, color=NAVY, label="long leg")
     ax.hist(shorts["days_adv"], bins=b, alpha=0.6, color=RED, label="short leg")
     ax.set_xlabel("position size in days of average daily volume")
@@ -331,23 +335,15 @@ def exhibits(run, sig, outdir, m):
 
 
 def formation_rows(run_dir, sig):
-    """Positions on each formation date with their cap and liquidity, rebuilt
-    from the trade log: the formation-day post-trade book."""
-    d = pd.read_parquet(run_dir / "daily.parquet")
-    pnl = pd.read_parquet(run_dir / "pnl.parquet")
-    form_days = d.loc[d["rebalance"].str.startswith("formation"), ["date", "month", "nav"]]
-    # the position earning on the day AFTER formation is the formed book
-    nxt = d["date"].shift(-1)
-    fd = form_days.assign(next_day=nxt.loc[form_days.index].values).dropna()
-    p = pnl.merge(fd, left_on="date", right_on="next_day", suffixes=("", "_f"))
-    p = p.rename(columns={"month": "target_month"})
-    s = sig[["permno", "target_month", "shares", "me", "dolvol_126d"]]
-    p = p.merge(s, on=["permno", "target_month"], how="left")
-    dsf = pd.read_parquet(F.DSF_PARQUET, columns=["permno", "date", "prc"])
-    p = p.merge(dsf.rename(columns={"date": "date_f"}), on=["permno", "date_f"], how="left")
-    p["me_form"] = p["shares"] * p["prc"].abs()
-    p["days_adv"] = p["x"].abs() / p["dolvol_126d"]
-    return p[p["x"] > 0], p[p["x"] < 0]
+    """The book as FORMED each month: target weights set at the close of the
+    formation day, with market cap at that close and ADV at month end. Names
+    still being worked out of last month's book are not part of the formed
+    book and are excluded here (they are in the daily holdings file)."""
+    t = pd.read_parquet(run_dir / "targets.parquet")
+    t["days_adv"] = t["target_usd"].abs() / t["dolvol_126d"]
+    t["x"] = t["target_usd"]
+    t["me_form"] = t["me_formation"]
+    return t[t["x"] > 0], t[t["x"] < 0]
 
 
 def report(tag, label=None, window="test"):
