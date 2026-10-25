@@ -152,15 +152,18 @@ def build():
     features = pd.read_csv(C.FACTOR_LIST_CSV)["variable"].tolist()
     df = pd.read_parquet(C.MODEL_TABLE, columns=KEYS + features + [C.TARGET])
     print("read %s rows" % format(len(df), ","))
+    # float32 halves memory: two ranked copies of a 529k x 147 panel in float64
+    # do not fit in 7 GB. Ranks mapped to [-1, 1] lose nothing at 7 digits.
+    df[features] = df[features].astype(np.float32)
 
     missing_before = df[features].isna().mean().mean()
     filled, sparse = [], []
     for month, grp in df.groupby("target_month", sort=True):
         a = grp.copy()
-        a[features] = a[features].apply(rank_to_unit)
+        a[features] = a[features].apply(rank_to_unit).astype(np.float32)
         filled.append(a)
         b = grp.copy()
-        b[features] = b[features].apply(rank_keep_missing)
+        b[features] = b[features].apply(rank_keep_missing).astype(np.float32)
         sparse.append(b)
     df = pd.concat(filled, ignore_index=True)
     df_sparse = pd.concat(sparse, ignore_index=True)
