@@ -26,3 +26,6 @@ experiments/model_comparison/**/__pycache__/
 experiments/model_comparison/run.log
 
 .DS_Store
+
+# final round: derived daily tables and the agent cache stay local
+06_final/data/
