@@ -298,6 +298,8 @@ class Engine:
         shares_now = np.full(nP, np.nan)
         decision_epoch = 0
         targets_log = []
+        audit_rows, execution_rows, stub_rows = [], [], []
+        liquidity_asof = np.full(nP, np.datetime64("NaT"), dtype="datetime64[ns]")
         rows, pos_rows, trades, anomalies, form_log = [], [], [], [], []
         self.form_log_live = form_log        # read by the triage layer during the run
         acted_events = set()
@@ -327,6 +329,7 @@ class Engine:
                     s = H["delist_long"] if x[i] > 0 else H["delist_short"]
                 s = float(np.clip(s, -1.0, 2.0))
                 stub_pnl += x[i] * s
+                stub_rows.append((di, day, int(self.perms[i]), float(x[i]), s, float(x[i] * s)))
                 anomalies.append({"date": day, "permno": int(self.perms[i]), "kind": "delisting",
                                   "position": x[i], "stub": s,
                                   "basis": "monthly CRSP remainder" if np.isfinite(R_m) else "default"})
@@ -348,6 +351,7 @@ class Engine:
             long_r = pnl_i[longs].sum() / lval if lval > 0 else 0.0
             short_r = -pnl_i[shorts].sum() / sval if sval > 0 else 0.0   # return of the shorted names
             x = x * (1 + r_use)
+            cash_income = cash * rf
             cash = cash * (1 + rf)
             fee = float((-x[x < 0] * borrow[x < 0]).sum() / 252)
             cash -= fee
@@ -360,6 +364,9 @@ class Engine:
             hi_ = np.where(held & (x_open != 0))[0]
             pos_rows.append(np.column_stack([np.full(len(hi_), di), self.perms[hi_],
                                              x_open[hi_], r_use[hi_], pnl_i[hi_]]))
+
+            # Audit snapshot before any discretionary/compliance trading.
+            pretrade_x, pretrade_nav = x.copy(), float(nav)
 
             # ---- 2. decide at the close ------------------------------
             # tw: target weights (fraction of NAV); pending: names still being
@@ -394,6 +401,7 @@ class Engine:
                     "dolvol_126d": adv[nz_], "target_usd": target[nz_]}))
                 pending = (tw != 0) | (x != 0)
                 shares_now[g["pi"].values] = g["shares"].values
+                liquidity_asof[g["pi"].values] = np.datetime64(month.to_timestamp() - pd.Timedelta(days=1))
                 month_in_book = m_str
                 decision_epoch += 1
                 reason = "formation"
@@ -459,6 +467,10 @@ class Engine:
                     c = self.trade_cost(delta, (hs, sig, adv_use))
                     cash -= delta.sum() + c
                     cost += c
+                    for j in np.where(delta != 0)[0]:
+                        execution_rows.append((day, int(self.perms[j]), "target", float(delta[j]),
+                            float(x[j]), float(x[j]+delta[j]), float(shares_now[j]*self.P[di+1,j]),
+                            float(adv_use[j]), liquidity_asof[j], bool(np.isfinite(adv[j]))))
                     turnover += 0.5 * np.abs(delta).sum() / nav
                     if self.triage is not None:
                         self.triage.record_fills(day, delta, "trade")
@@ -480,6 +492,10 @@ class Engine:
                 c = self.trade_cost(delta, (hs, sig, adv_use))
                 cash -= delta.sum() + c
                 cost += c
+                for j in np.where(delta != 0)[0]:
+                    execution_rows.append((day, int(self.perms[j]), "compliance", float(delta[j]),
+                        float(x[j]), float(x[j]+delta[j]), float(shares_now[j]*self.P[di+1,j]),
+                        float(adv_use[j]), liquidity_asof[j], bool(np.isfinite(adv[j]))))
                 turnover += 0.5 * np.abs(delta).sum() / nav
                 for i in np.where(np.abs(delta) > 1.0)[0]:
                     trades.append((day, int(self.perms[i]), float(delta[i]),
@@ -492,6 +508,13 @@ class Engine:
             if today_leg is not None:
                 self.leg_hist.append(today_leg)
             w = x / nav
+            dollar_turnover = turnover
+            # Section 9.3, one observation per execution date, including cost-induced NAV changes.
+            turnover = float(0.5 * np.abs(w - pretrade_x / pretrade_nav).sum())
+            for j in np.where((pretrade_x != 0) | (x != 0))[0]:
+                audit_rows.append((day, di, int(self.perms[j]), float(pretrade_x[j]), pretrade_nav,
+                    float(x[j]), float(nav), float(pretrade_x[j]/pretrade_nav), float(w[j]),
+                    float(shares_now[j]*self.P[di+1,j]), float(adv[j]), liquidity_asof[j]))
             rows.append({
                 "date": day, "month": m_str, "nav": nav, "ret": nav / nav_prev - 1,
                 "ret_pre_cost": (nav + cost) / nav_prev - 1,
@@ -502,7 +525,8 @@ class Engine:
                 "max_w": float(np.abs(w).max()) if nP else 0.0,
                 "long_ret": long_r, "short_ret": short_r,
                 "cost": cost, "borrow": fee, "stub_pnl": stub_pnl,
-                "turnover": turnover, "rebalance": reason or "",
+                "turnover": turnover, "turnover_dollar_proxy": dollar_turnover,
+                "cash_income": cash_income, "audit_version": 1, "rebalance": reason or "",
             })
 
         self.daily = pd.DataFrame(rows)
@@ -510,6 +534,15 @@ class Engine:
         self.pnl = pd.DataFrame(pr, columns=["di", "permno", "x", "r", "pnl"])
         self.pnl["date"] = self.days["date"].values[self.pnl["di"].astype(int)]
         self.pnl["permno"] = self.pnl["permno"].astype(int)
+        self.pnl["pnl_kind"] = "market"
+        stubs = pd.DataFrame(stub_rows, columns=["di", "date", "permno", "x", "r", "pnl"])
+        stubs["pnl_kind"] = "delisting"
+        if not stubs.empty:
+            self.pnl = pd.concat([self.pnl, stubs], ignore_index=True)
+        self.position_audit = pd.DataFrame(audit_rows, columns=["date", "di", "permno", "pre_usd", "pre_nav",
+            "position_usd", "nav", "pre_weight", "weight", "market_cap_million", "adv_dollars", "liquidity_asof"])
+        self.executions = pd.DataFrame(execution_rows, columns=["date", "permno", "stage", "trade_usd",
+            "before_usd", "after_usd", "market_cap_million", "adv_dollars", "liquidity_asof", "adv_observed"])
         self.trades = pd.DataFrame(trades, columns=["date", "permno", "delta", "adv_frac", "reason"])
         self.anomalies = pd.DataFrame(anomalies)
         self.form_log = pd.DataFrame(form_log)
@@ -617,6 +650,8 @@ def save(e, tag=None):
     e.daily.to_parquet(d / "daily.parquet", index=False)
     e.pnl.to_parquet(d / "pnl.parquet", index=False)
     e.trades.to_parquet(d / "trades.parquet", index=False)
+    e.position_audit.to_parquet(d / "position_audit.parquet", index=False)
+    e.executions.to_parquet(d / "executions.parquet", index=False)
     e.anomalies.to_parquet(d / "anomalies.parquet", index=False)
     e.targets.to_parquet(d / "targets.parquet", index=False)
     fl = e.form_log.copy()
@@ -652,6 +687,7 @@ if __name__ == "__main__":
     ap.add_argument("--nav", type=float, default=None, help="starting NAV, US$")
     ap.add_argument("--cost", default="sqrt:0.7", help="sqrt:Y | almgren | flat:BPS")
     ap.add_argument("--borrow", default="model", choices=["model", "flat"])
+    ap.add_argument("--output-tag", default=None, help="Save audited rerun separately, e.g. test_M_audited")
     a = ap.parse_args()
     lay = None
     if a.layer:
@@ -668,9 +704,10 @@ if __name__ == "__main__":
         tri = RL.TriageLayer(a.triage)
     e = Engine(a.window, a.freq, a.overlay, layer=lay, label=label, start_nav=a.nav,
                cost_mode=a.cost, borrow_mode=a.borrow, triage=tri).run()
-    save(e)
+    save(e, tag=a.output_tag)
     if lay is not None:
         lay.write_log(e.label)
     if tri is not None:
         tri.write_log(e.label)
     quick_stats(e.daily, e.label)
+

@@ -1,3 +1,5 @@
+> Updated: use [LEDGER_HANDOFF.md](LEDGER_HANDOFF.md) for corrected turnover, contributors and actual executed holdings. The earlier export-only workflow below produces a draft when no audit ledger is supplied. The final code and exported inputs are also on main; ZIP extraction is unnecessary after merging main.
+
 # Final report from the 06_final export
 
 Use final_report.py for the final strategy; report.py remains the round-one regression baseline.
@@ -53,3 +55,4 @@ The report is suitable for reviewing the supplied exports, but does not certify 
 ## Checks on the supplied package
 
 The headline test_M export passes the accounting, complete-factor-coverage, and required chart-input checks. The comparison test_Q export has 228 missing me_form values among 8,205 formation rows; strict validation rejects it instead of omitting those observations silently. Repair those input characteristics before reporting test_Q with this adapter.
+

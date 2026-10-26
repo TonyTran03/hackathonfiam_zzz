@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+import ledger
 
 FACTOR_NAMES=['Mkt-RF','SMB','HML','RMW','CMA','Mom']
 FACTOR_URLS={
@@ -197,24 +198,82 @@ def factor_attribution(d,factors):
     return pd.concat(rows,ignore_index=True),j
 
 
-def generate(inputs,out,factor_cache=None,nav0=1e9):
+def generate(inputs,out,factor_cache=None,nav0=1e9,ledger_dir=None,require_verified=False):
     out.mkdir(parents=True,exist_ok=True)
     files=['daily_returns.csv','standard_table.csv','formation_positions.csv','top_holdings.csv','contributors.csv']
     loaded={n:pd.read_csv(inputs/n) for n in files}
     d=validate_daily(loaded['daily_returns.csv'],nav0);form=loaded['formation_positions.csv']
+    verified=None
+    if ledger_dir is None:
+        candidate=inputs.parent.parent/'data'/'runs'/inputs.name
+        if (candidate/'position_audit.parquet').exists():ledger_dir=candidate
+    if ledger_dir is not None:
+        names=pd.concat([loaded['top_holdings.csv'],loaded['contributors.csv']],ignore_index=True)[['permno','ticker','company_name']].drop_duplicates('permno')
+        signals=ledger_dir.parent.parent/'signal_test.parquet'
+        if signals.exists():
+            signal=pd.read_parquet(signals)
+            if all(c in signal for c in ['permno','ticker','company_name']):
+                if 'target_month' in signal:signal=signal.sort_values('target_month')
+                names=signal.dropna(subset=['ticker','company_name']).drop_duplicates('permno',keep='last')[['permno','ticker','company_name']]
+        verified=ledger.load(ledger_dir,d,names)
+        d=validate_daily(verified['daily'],nav0)
+        pos=verified['positions']
+        form=pos.rename(columns={'market_cap_million':'me_form','adv_dollars':'dolvol_126d','position_usd':'target_usd'}).copy()
+        form['leg']=np.where(form.target_usd>0,'long','short')
+        for item in ['top','contributors']:
+            q=verified[item]
+            q['ticker']=q.ticker.fillna('PERMNO')
+            q['company_name']=q.company_name.fillna('Name unavailable')
+        loaded['top_holdings.csv']=verified['top'];loaded['contributors.csv']=verified['contributors']
+        for name,key in [('daily_positions','positions'),('short_executions','shorts'),('execution_participation','executions'),('all_average_holdings','all_average'),('all_stock_contributors','all_contributors'),('holding_spells','spells')]:
+            verified[key].to_csv(out/(name+'.csv'),index=False)
+        d.to_csv(out/'daily_returns_verified.csv',index=False)
+    elif require_verified:
+        raise ValueError('Detailed audit ledger required: rerun patched engine and pass --ledger-dir')
+
     for col in ['me_form','dolvol_126d','target_usd','days_adv']:
-        if not np.isfinite(form[col]).all():raise ValueError('Missing formation '+col)
+        if verified is None and not np.isfinite(form[col]).all():raise ValueError('Missing formation '+col)
     if (form[['me_form','dolvol_126d']]<=0).any().any():raise ValueError('Nonpositive formation characteristics')
     if not set(form.leg)<= {'long','short'} or set(form.leg)!={'long','short'}:raise ValueError('Both long/short legs required')
-    if not np.allclose(form.days_adv,form.target_usd.abs()/form.dolvol_126d,atol=1e-9):raise ValueError('Days ADV does not reconcile')
+    if verified is None and not np.allclose(form.days_adv,form.target_usd.abs()/form.dolvol_126d,atol=1e-9):raise ValueError('Days ADV does not reconcile')
     for filename,col in [('top_holdings.csv','avg_weight_pct'),('contributors.csv','contribution_pct_of_start_nav')]:
         q=loaded[filename]
         if len(q)!=20 or q.permno.duplicated().any() or not np.isfinite(q[col]).all():raise ValueError('Expected 20 unique finite rows in '+filename)
         if (q[col]>0).sum()!=10 or (q[col]<0).sum()!=10:raise ValueError('Expected ten positive and ten negative entries in '+filename)
     table,regs=build_table(d,loaded['standard_table.csv'],form,nav0)
+    if verified is not None:
+        sm=verified['summary']
+        replacements={'One-way turnover':f"{sm['turnover_per_daily_rebalance_pct']:.3f} / {sm['turnover_annual_pct']:.3f}",
+            'Average holding period':fmt(sm['holding_period_days']),
+            'Average position size':fmt(sm['average_position_size_million']),
+            'Short book median market cap':fmt(verified['shorts'].market_cap_million.median())}
+        for metric,value in replacements.items():table.loc[table.Metric==metric,'Strategy']=value
+    else:
+        table.loc[table.Metric=='One-way turnover','Strategy']='Pending corrected ledger'
     table.to_csv(out/'section9_table.csv',index=False)
     pd.concat([v.assign(regression=k) for k,v in regs.items()]).to_csv(out/'market_regressions.csv',index=False)
     figs,beta,annual=make_charts(d,loaded['top_holdings.csv'],loaded['contributors.csv'],form)
+    if verified is not None:
+        sh=verified['shorts'];positions=verified['positions'];sm=verified['summary']
+        f=make_subplots(rows=1,cols=2,subplot_titles=('Market cap at actual short opening/addition (US$ million)','ADV used for the actual fill (US$ million)'))
+        f.add_trace(go.Histogram(x=sh.market_cap_million.tolist(),name='Actual short fills'),row=1,col=1)
+        f.add_vline(x=500,line_color='red',line_dash='dash',row=1,col=1)
+        f.add_trace(go.Histogram(x=(sh.adv_dollars/1e6).tolist(),name='Execution ADV'),row=1,col=2)
+        f.update_layout(title='7. Actual short openings/additions - market cap and ADV',template='plotly_white',showlegend=False)
+        f.add_annotation(text=f"Unknown market cap: {sm['short_execution_floor_unknown']}; below floor: {sm['short_execution_floor_breaches']}; fallback ADV: {sm['short_execution_adv_fallbacks']}",xref='paper',yref='paper',x=0,y=-.25,showarrow=False)
+        figs[6]=f
+        f=make_subplots(rows=1,cols=2,subplot_titles=('Actual long holdings','Actual short holdings'))
+        for i,sign in enumerate([1,-1],1):
+            q=positions[(np.sign(positions.position_usd)==sign)&positions.liquidity_known]
+            f.add_trace(go.Histogram(x=q.days_adv.tolist(),name='Long' if sign==1 else 'Short'),row=1,col=i)
+        f.update_layout(title='8. Actual daily positions in days of ADV',template='plotly_white',showlegend=False)
+        f.update_xaxes(title_text='Absolute closing position dollars / stored ADV')
+        f.add_annotation(text=f"One observation per held name/day. Missing ADV: {sm['position_liquidity_unknown']}; ADV is the engine's last formation estimate.",xref='paper',yref='paper',x=0,y=-.25,showarrow=False)
+        figs[7]=f
+    else:
+        figs[5]=go.Figure()
+        figs[5].update_layout(title='6. Return contributors - pending corrected ledger',template='plotly_white',xaxis_visible=False,yaxis_visible=False)
+        figs[5].add_annotation(text='Previous contributors omit delisting P&L. Rerun the patched engine.',xref='paper',yref='paper',x=.5,y=.5,showarrow=False)
     beta.to_csv(out/'rolling_beta.csv',index=False);annual.to_csv(out/'calendar_years.csv',index_label='year')
     attribution=None;sources={}
     if factor_cache is not None:
@@ -222,8 +281,8 @@ def generate(inputs,out,factor_cache=None,nav0=1e9):
         attribution.to_csv(out/'ff5_momentum_attribution.csv',index=False);joined.to_csv(out/'factor_regression_sample.csv',index=False)
     checks={'nav_reconciles':True,'costs_reconcile':True,'daily_benchmark_formula':True,
         'positions_min':int((d.n_long+d.n_short).min()),'gross_max':float(d.gross.max()),'net_min':float(d.net.min()),'net_max':float(d.net.max()),'single_name_max':float(d.max_w.max()),
-        'formation_short_min_market_cap_million':float(form.loc[form.leg=='short','me_form'].min()),
-        'formation_short_floor_pass':bool((form.loc[form.leg=='short','me_form']>=500).all()),
+        'short_sample_min_market_cap_million':float(form.loc[form.leg=='short','me_form'].min()),
+        'short_sample_floor_pass':bool((form.loc[form.leg=='short','me_form']>=500).all()),
         'daily_position_count_pass':bool(((d.n_long+d.n_short)>=200).all() and ((d.n_long+d.n_short)<=500).all()),
         'daily_gross_limit_pass':bool((d.gross<=2+1e-10).all()),
         'daily_net_limit_pass':bool((d.net.abs()<=.5+1e-10).all()),
@@ -241,13 +300,32 @@ def generate(inputs,out,factor_cache=None,nav0=1e9):
       'OLS standard errors are conventional, not heteroskedasticity/autocorrelation robust. FF regressions use the French RF; market regressions use the supplied cash series.',
       'Cumulative active exhibit uses the relative compounded wealth ratio minus one; this aggregation convention is explicitly disclosed.'
     ]
+    if verified is not None:
+        warnings=warnings[4:]
+        warnings=[w for w in warnings if not w.startswith('Liquidity and short-floor')]
+        warnings.insert(0,'Verified against the supplied detailed ledger: Section 9.3 turnover, daily positions, and stock P&L including delistings. This does not certify the raw market data or strategy.')
+        warnings.insert(1,'Daily turnover uses all trading dates including zero-trade days, annualised by 252; carried orders are actual executions, not monthly target changes.')
+        warnings.insert(2,'Holding periods are consecutive end-of-day holding spells, weighted by mean absolute dollars. Sample-boundary spells are censored and included only for observed days. Average position size is the mean absolute held name/day position.')
+        warnings.insert(3,'Short market cap is the engine estimate at actual short openings/additions. Shares and 126-day ADV are last formation inputs; their as-of dates are exported. Position-size/ADV uses actual closing holdings. Missing values and fallback ADV are explicitly counted.')
+        warnings.insert(4,'Average weights use every end-of-day snapshot, with zero for absent names. Contributors include delisting settlement P&L, but cash income and portfolio costs remain separate. Labels may use later reference dates.')
+        checks.update(verified['summary'])
+        checks.pop('short_sample_floor_pass',None)
+        checks.pop('short_sample_min_market_cap_million',None)
+        checks['short_execution_min_market_cap_million']=float(verified['shorts'].market_cap_million.min())
+        missing_names=int((verified['top'].company_name=='Name unavailable').sum()+(verified['contributors'].company_name=='Name unavailable').sum())
+        checks['missing_exhibit_company_names']=missing_names
+        if require_verified and (missing_names or checks['short_execution_floor_unknown'] or checks['short_execution_adv_fallbacks'] or checks['position_liquidity_unknown'] or checks['short_execution_floor_breaches'] or not all(checks[k] for k in ['daily_position_count_pass','daily_gross_limit_pass','daily_net_limit_pass','daily_single_name_limit_pass'])):
+            raise ValueError('Ledger reconciles, but missing labels/liquidity or short-floor breaches prevent verified submission; inspect audit exports')
     if attribution is None:warnings.append('FF5+momentum not generated: provide --factor-cache to fetch and cache the official monthly series.')
-    provenance={'run':inputs.name,'start':str(d.date.min().date()),'end':str(d.date.max().date()),'days':len(d),'months':len(monthly(d)),'start_nav':nav0,'inputs':{n:sha(inputs/n) for n in files},'script_sha256':sha(Path(__file__)),'factors':sources,'checks':checks,'limitations':warnings,'independent_full_ledger_validation':False}
+    provenance={'run':inputs.name,'start':str(d.date.min().date()),'end':str(d.date.max().date()),'days':len(d),'months':len(monthly(d)),'start_nav':nav0,'inputs':{n:sha(inputs/n) for n in files},'script_sha256':sha(Path(__file__)),'factors':sources,'checks':checks,'limitations':warnings,'independent_full_ledger_validation':verified is not None}
+    if verified is not None:
+        provenance['ledger_inputs']={name:sha(ledger_dir/name) for name in ['daily.parquet','position_audit.parquet','pnl.parquet','executions.parquet']}
+        if signals.exists():provenance['label_signal_sha256']=sha(signals)
     (out/'validation.json').write_text(json.dumps(provenance,indent=2))
     import html
     body='<!doctype html><html lang="en"><meta charset="utf-8"><title>FIAM final reporting</title><style>body{font:15px Arial;color:#173047;max-width:1300px;margin:35px auto;padding:20px}table{border-collapse:collapse;width:100%;font-size:12px}td,th{padding:8px;border-bottom:1px solid #dbe3e8;text-align:left}th{background:#edf4f6}.notice{background:#fff4dc;padding:16px}h1,h2{color:#126e82}@media print{.plotly-graph-div{break-inside:avoid}}</style>'
     body+=f'<h1>FIAM final reporting: {html.escape(inputs.name)}</h1><p>{d.date.min():%Y-%m-%d} to {d.date.max():%Y-%m-%d} | {len(d)} trading observations</p>'
-    body+='<p class="notice">Accounting checks passed. This report uses supplied exports; detailed-ledger verification remains outstanding. See the provenance and limitations below.</p><h2>Section 9.1</h2><p>Net performance except the first IR and tracking error, which are gross. Percentages are in percent units. Parentheses contain standard errors.</p>'+table.to_html(index=False,escape=True)
+    body+='<p class="notice">Accounting checks passed. Detailed-ledger verification status and any outstanding limitations are listed below.</p><h2>Section 9.1</h2><p>Net performance except the first IR and tracking error, which are gross. Percentages are in percent units. Parentheses contain standard errors.</p>'+table.to_html(index=False,escape=True)
     years=len(d)/252
     body+=f'<p>Section 9.2 CAGR: net strategy {((1+d.ret).prod()**(1/years)-1)*100:.3f}%; benchmark {((1+d.hurdle).prod()**(1/years)-1)*100:.3f}%. Annualised table return is the arithmetic mean times 252.</p>'
     body+='<h2>Section 9.4: eight required exhibits</h2><p>Hover for values; drag or scroll to zoom; use the toolbar to pan, reset, or export PNG. The report works offline.</p>'
@@ -258,8 +336,8 @@ def generate(inputs,out,factor_cache=None,nav0=1e9):
     if attribution is not None:body+='<h2>FF5 + momentum attribution</h2><p>Official monthly factors; all test months included. Coefficients and standard errors are in return-decimal units. Alpha is monthly in coefficient and annual in annualised_coefficient. Annual mean contributions are percentage points, not compounded attribution.</p>'+attribution.to_html(index=False,float_format=lambda v:f'{v:.5f}')
     for name in ['hit_rate.csv','alpha_decay.csv','sizing_vs_selection.csv']:
         if (inputs/name).exists():
-            q=pd.read_csv(inputs/name);q.to_csv(out/name,index=False)
-            body+='<h2>'+html.escape(name.replace('.csv','').replace('_',' ').title())+'</h2><p>Supplied diagnostic; not independently recomputed without position and signal histories.</p>'+q.to_html(index=False,escape=True)
+            q=pd.read_csv(inputs/name).rename(columns={'Unnamed: 0':'Leg'});q.to_csv(out/name,index=False)
+            body+='<h2>'+html.escape(name.replace('.csv','').replace('_',' ').title())+'</h2><p>Supplied diagnostic; not independently recomputed without position and signal histories.</p>'+q.to_html(index=False,escape=True,na_rep='n/a')
             provenance['inputs'][name]=sha(inputs/name)
     body+='<h2>Checks</h2>'+pd.DataFrame(checks.items(),columns=['Check','Result']).to_html(index=False)+'<h2>Provenance and limitations</h2><ul>'+''.join('<li>'+html.escape(w)+'</li>' for w in warnings)+'</ul></html>'
     if re.search(r'[\u3400-\u9fff]',body):raise ValueError('Report contains non-English CJK text')
@@ -274,4 +352,7 @@ if __name__=='__main__':
     p.add_argument('--output',type=Path,default=Path('output_final'))
     p.add_argument('--factor-cache',type=Path,help='Download/cache official FF5 + momentum ZIPs and run attribution')
     p.add_argument('--start-nav',type=float,default=1e9)
-    a=p.parse_args();generate(a.inputs,a.output,a.factor_cache,a.start_nav)
+    p.add_argument('--ledger-dir',type=Path,help='06_final/data/runs/test_M from patched engine')
+    p.add_argument('--require-verified',action='store_true',help='Require a reconciled ledger and complete labels/liquidity')
+    a=p.parse_args();generate(a.inputs,a.output,a.factor_cache,a.start_nav,a.ledger_dir,a.require_verified)
+

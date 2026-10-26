@@ -1,3 +1,6 @@
-
-output_final/
+.venv/
+__pycache__/
+*.pyc
+output/
+output_final*/
 factor_cache/
