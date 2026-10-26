@@ -120,5 +120,5 @@ post-hoc everywhere it appears, and is not a candidate for the headline.
 - The question the comparison answers: what does a fixed cost rule, and then
   an AI, add ON TOP OF the band and the participation cap?
 - One run per mode on 2021-01 .. 2026-08, all reported. The position-risk
-  agent (Amendment-free, pre-registered as "M+agent layer") stays a separate
+  agent (pre-registered as "M+agent layer") stays a separate
   optional mode.
