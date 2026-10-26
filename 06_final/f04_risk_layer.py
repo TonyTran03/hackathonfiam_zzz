@@ -75,10 +75,23 @@ _OPENAI_STYLE = {"xai": ("https://api.x.ai/v1/chat/completions", "XAI_API_KEY"),
                  "ollama": (os.environ.get("OLLAMA_URL", "http://localhost:11434") + "/v1/chat/completions", None)}
 
 
-def _chat_openai_style(provider, model, system, user):
+TRANSIENT_HTTP = {408, 409, 429, 500, 502, 503, 504}
+RETRY_WAITS = (5, 15, 30, 60, 120, 180, 300)      # seconds; ~12 minutes in all
+
+
+def _chat_openai_style(provider, model, system, user, waits=RETRY_WAITS, sleep=None):
     """xAI and Ollama both speak the OpenAI chat-completions format; plain
-    HTTP, so no extra package is needed."""
+    HTTP, so no extra package is needed.
+
+    Transient failures -- a provider "at capacity" (HTTP 429), a 5xx, a read
+    timeout -- are retried with growing waits before giving up. This is
+    transport only: it asks the SAME question again and never changes what is
+    asked or substitutes another decision. Anything else (401, 403, a bad
+    request) fails at once."""
+    import time
+    import urllib.error
     import urllib.request
+    sleep = sleep or time.sleep
     url, key_env = _OPENAI_STYLE[provider]
     headers = {"Content-Type": "application/json"}
     if key_env:
@@ -86,10 +99,19 @@ def _chat_openai_style(provider, model, system, user):
     body = json.dumps({"model": model, "temperature": 0, "max_tokens": 200,
                        "messages": [{"role": "system", "content": system},
                                     {"role": "user", "content": user}]}).encode()
-    req = urllib.request.Request(url, data=body, headers=headers, method="POST")
-    with urllib.request.urlopen(req, timeout=120) as r:
-        out = json.loads(r.read())
-    return out["choices"][0]["message"]["content"]
+    for attempt in range(len(waits) + 1):
+        try:
+            req = urllib.request.Request(url, data=body, headers=headers, method="POST")
+            with urllib.request.urlopen(req, timeout=120) as r:
+                out = json.loads(r.read())
+            return out["choices"][0]["message"]["content"]
+        except urllib.error.HTTPError as exc:
+            if exc.code not in TRANSIENT_HTTP or attempt == len(waits):
+                raise
+        except (TimeoutError, urllib.error.URLError, ConnectionError):
+            if attempt == len(waits):
+                raise
+        sleep(waits[attempt])
 SYSTEM_PROMPT = """You are the risk analyst for a market-neutral US equity fund.
 You review ONE flagged position at a time. You see only numbers about the
 position and the book, never the company's identity, and you must not guess it.
@@ -277,7 +299,7 @@ class AgentLayer(_Base):
             path.write_text(json.dumps(rec, indent=1))
             self.calls += 1
         try:
-            ans = json.loads(rec["response"][rec["response"].find("{"):rec["response"].rfind("}") + 1])
+            ans = first_json_object(rec["response"])
             return float(ans["scale"]), str(ans.get("reason", ""))
         except Exception:
             return 1.0, "unparseable response -> no change"
@@ -350,7 +372,7 @@ def smoke_test():
     if lay.client is None:
         raise SystemExit("no key for provider %r" % lay.provider)
     text = lay.ask(json.dumps(ctx, sort_keys=True))
-    ans = json.loads(text[text.find("{"):text.rfind("}") + 1])
+    ans = first_json_object(text)
     print("provider %s, model %s -> scale %s: %s" % (lay.provider, lay.model, ans["scale"], ans.get("reason")))
     return ans
 
@@ -486,11 +508,21 @@ def model_call(provider, model, system, user):
     raise ValueError("unknown provider %r" % provider)
 
 
-def parse_triage(text):
-    """Validate a model answer. Returns (decision, reason) or raises ValueError."""
+def first_json_object(text):
+    """The first complete JSON object in a reply; text after it is ignored
+    (models sometimes add an explanation or a second object after the answer).
+    The full raw reply is still logged."""
     if not isinstance(text, str) or "{" not in text:
         raise ValueError("no JSON object in the answer")
-    obj = json.loads(text[text.find("{"):text.rfind("}") + 1])
+    obj, _ = json.JSONDecoder().raw_decode(text[text.find("{"):])
+    if not isinstance(obj, dict):
+        raise ValueError("answer is not a JSON object")
+    return obj
+
+
+def parse_triage(text):
+    """Validate a model answer. Returns (decision, reason) or raises ValueError."""
+    obj = first_json_object(text)
     dec = str(obj.get("decision", "")).strip().lower()
     if dec not in FRACTION:
         raise ValueError("decision %r is not execute / half / skip" % dec)

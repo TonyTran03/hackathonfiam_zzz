@@ -151,6 +151,54 @@ def test_failure_handling():
     check(not list(Path(cache).glob("*.json")), "an invalid answer is not cached")
 
 
+def test_reply_and_transport_robustness():
+    dec, reason = R.parse_triage('{"decision":"half","reason":"costly"} Note: I considered the rank.')
+    check(dec == "half" and reason == "costly", "text after the JSON answer is ignored, not fatal")
+    dec, _ = R.parse_triage('Answer: {"decision":"skip","reason":"r"}\n{"decision":"execute","reason":"x"}')
+    check(dec == "skip", "with two objects, the first complete one is the answer")
+    import io
+    import urllib.error
+    import urllib.request
+    calls, waits = [], []
+    real = urllib.request.urlopen
+
+    class Resp(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    def fake(req, timeout=None):
+        calls.append(1)
+        if len(calls) < 3:
+            raise urllib.error.HTTPError(req.full_url, 429, "at capacity", {}, None)
+        return Resp(json.dumps({"choices": [{"message": {"content": '{"decision":"execute","reason":"ok"}'}}]}).encode())
+
+    urllib.request.urlopen = fake
+    try:
+        import os
+        os.environ.setdefault("XAI_API_KEY", "test-not-a-key")
+        out = R._chat_openai_style("xai", "m", "s", "u", waits=(1, 2, 3), sleep=waits.append)
+    finally:
+        urllib.request.urlopen = real
+    check(len(calls) == 3 and waits == [1, 2] and "execute" in out,
+          "a 429 'at capacity' is retried with growing waits, then succeeds")
+
+    def denied(req, timeout=None):
+        raise urllib.error.HTTPError(req.full_url, 401, "unauthorized", {}, None)
+
+    urllib.request.urlopen = denied
+    try:
+        R._chat_openai_style("xai", "m", "s", "u", waits=(1, 2), sleep=lambda s: None)
+        failed_fast = False
+    except urllib.error.HTTPError as exc:
+        failed_fast = exc.code == 401
+    finally:
+        urllib.request.urlopen = real
+    check(failed_fast, "a 401 is not retried: a wrong key fails at once")
+
+
 def test_cache():
     eng, nav = StubEngine(), 1e9
     calls, cache = [], tempfile.mkdtemp()
@@ -221,7 +269,8 @@ def test_engine_wiring():
 
 if __name__ == "__main__":
     for f in [test_trade_not_position, test_pending_orders, test_timing_and_blinding,
-              test_failure_handling, test_cache, test_routine_and_mandatory]:
+              test_failure_handling, test_reply_and_transport_robustness, test_cache,
+              test_routine_and_mandatory]:
         f()
     if "--engine" in sys.argv:
         test_engine_wiring()
