@@ -1,3 +1,5 @@
+> Turnover/delisting fixes and actual-position reporting: see [LEDGER_HANDOFF.md](LEDGER_HANDOFF.md). A corrected ledger rerun is required to verify the final report.
+
 > For the final 06_final exports, use [FINAL_REPORT.md](FINAL_REPORT.md) and final_report.py. The instructions below describe the older round-one baseline.
 
 # FIAM reporting — stage 1
@@ -59,3 +61,4 @@ The original report did not match the prescribed table layout or include all req
 Exhibits 1, 3, 4 and 5 have data: cumulative active performance with S&P context, gross calendar-year returns, monthly target exposures, and top/bottom average holdings. Exhibit 3 is incomplete without costs; exhibit 4 shows monthly targets, not daily drift. Exhibits 2, 6, 7 and 8 are explicit missing-data panels, not fabricated plots.
 
 Section 9.4 does not specify how to aggregate cumulative active returns. The report explicitly uses the difference of compounded strategy and benchmark wealth and applies the same convention to S&P context; confirm that convention with the organisers. Price-only S&P data remain a disclosed limitation. This report is not final-ready.
+
