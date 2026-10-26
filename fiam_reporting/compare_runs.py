@@ -21,8 +21,8 @@ LEDGER_LABELS={'position_audit.parquet':'daily pre/post holdings','executions.pa
 # Columns whose definition changed in the audited engine, so a difference is expected rather than a mismatch.
 TURNOVER='audited engine computes Section 9.3 turnover from pre/post weights; original field was a dollar-trade proxy'
 REDEFINED={'daily_returns.csv':{'turnover':TURNOVER}}
-# Summary rows recomputed from the redefined turnover; the strategy column is checked row by row instead.
-REDEFINED_ROWS={'standard_table.csv':{'One-way turnover','Average holding period','Holding period, approximation'}}
+# Summary rows recomputed from the redefined turnover. Exempt only in the listed column, and only when every differing row is listed.
+REDEFINED_ROWS={'standard_table.csv':{'strategy':{'One-way turnover','Average holding period','Holding period, approximation'}}}
 
 
 def compare_frame(name,a,b,keys,rtol):
@@ -32,6 +32,8 @@ def compare_frame(name,a,b,keys,rtol):
     if any(missing.values()):return {**row,'status':'missing_key_columns','missing_key_columns':missing,'match':False}
     dups={side:int(f.duplicated(keys).sum()) for side,f in [('original',a),('other',b)]}
     if any(dups.values()):return {**row,'status':'duplicate_keys','duplicate_keys':dups,'match':False}
+    # Two empty tables agree trivially; that is no evidence, so it is an issue rather than a comparison.
+    if a.empty and b.empty:return {**row,'status':'empty_in_both','match':False}
     a=a.set_index(keys).sort_index();b=b.set_index(keys).sort_index()
     row.update({'status':'compared','keys_identical':bool(a.index.equals(b.index)),
          'only_original':int((~a.index.isin(b.index)).sum()),'only_other':int((~b.index.isin(a.index)).sum()),'columns':{}})
@@ -41,16 +43,17 @@ def compare_frame(name,a,b,keys,rtol):
         if pd.api.types.is_numeric_dtype(x) and pd.api.types.is_numeric_dtype(y):
             x,y=x.to_numpy(float),y.to_numpy(float);both_nan=np.isnan(x)&np.isnan(y);diff=np.abs(x-y)
             scale=np.maximum(np.abs(x),np.abs(y));rel=np.divide(diff,scale,out=np.zeros_like(diff),where=scale>0)
+            bad=(np.isnan(x)!=np.isnan(y))|(~both_nan&~np.isclose(x,y,rtol=rtol,atol=0,equal_nan=True))
             entry={'max_abs_diff':float(np.nanmax(np.where(both_nan,0,diff))) if len(x) else 0.,'max_rel_diff':float(np.nanmax(np.where(both_nan,0,rel))) if len(x) else 0.,
                    'nan_mismatch':int((np.isnan(x)!=np.isnan(y)).sum())}
-            entry['match']=bool(entry['nan_mismatch']==0 and np.allclose(x[~both_nan],y[~both_nan],rtol=rtol,atol=0))
         else:
-            bad=~((x.isna()&y.isna())|(x.astype(str)==y.astype(str)))
-            bad_keys=list(x.index[bad.to_numpy()])
-            entry={'unequal_values':len(bad_keys),'match':not bad_keys,'unequal_keys':[' | '.join(map(str,k)) if isinstance(k,tuple) else str(k) for k in bad_keys][:20]}
+            bad=(~((x.isna()&y.isna())|(x.astype(str)==y.astype(str)))).to_numpy()
+            entry={}
+        bad_keys=list(common[bad])
+        entry.update({'unequal_values':len(bad_keys),'match':not bad_keys,'unequal_keys':[' | '.join(map(str,k)) if isinstance(k,tuple) else str(k) for k in bad_keys][:20]})
         if c in REDEFINED.get(name,{}):entry['expected_difference']=REDEFINED[name][c]
-        rows_ok=REDEFINED_ROWS.get(name,set())
-        if not entry['match'] and rows_ok and {k[0] if isinstance(k,tuple) else k for k in bad_keys}<=rows_ok:
+        rows_ok=REDEFINED_ROWS.get(name,{}).get(c,set())
+        if bad_keys and rows_ok and {k[0] if isinstance(k,tuple) else k for k in bad_keys}<=rows_ok:
             entry['expected_difference']='only turnover-derived rows differ: '+', '.join(entry['unequal_keys'])
         row['columns'][c]=entry
     row['match']=bool(row['columns']) and row['keys_identical'] and all(v['match'] or 'expected_difference' in v for v in row['columns'].values())
@@ -86,6 +89,15 @@ def compare(original,other,original_ledger=None,other_ledger=None,rtol=1e-9):
     shared_match=bool(compared) and all(r['match'] for r in compared)
     column_gaps=[{'file':r['file'],'columns_only_original':r['columns_only_original'],'columns_only_other':r['columns_only_other']}
                  for r in compared if r['columns_only_original'] or r['columns_only_other']]
+    holdings=next((r for r in ledger_rows if r['file']=='position_audit.parquet'),None)
+    if holdings is not None:
+        q=pd.read_parquet(Path(original_ledger)/'position_audit.parquet')
+        held=int((q.position_usd!=0).sum()) if 'position_usd' in q else 0
+        holdings['nonzero_positions_original']=held
+        if not held:
+            ledger_rows.remove(holdings);compared.remove(holdings)
+            not_performed.append({'file':'position_audit.parquet','status':'not performed: no nonzero holdings, so there is no holdings coverage to verify'})
+            shared_match=bool(compared) and all(r['match'] for r in compared)
     ledger_done=len(ledger_rows)==len(LEDGER_KEYS)
     if not compared:status='nothing_compared'
     elif not shared_match:status='mismatch'

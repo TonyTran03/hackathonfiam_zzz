@@ -78,6 +78,59 @@ class CompareRunsTests(unittest.TestCase):
         r=c.compare(a,b)
         self.assertEqual(r['issues'][0]['status'],'duplicate_keys');self.assertEqual(r['status'],'nothing_compared')
 
+    def ledgers(self,frames_a,frames_b):
+        la,lb=self.root/'la',self.root/'lb'
+        for d,frames in [(la,frames_a),(lb,frames_b)]:
+            d.mkdir()
+            for n,df in frames.items():df.to_parquet(d/n,index=False)
+        return la,lb
+
+    def test_empty_ledger_files_are_not_equivalence(self):
+        a,b=self.run_dirs({'daily_returns.csv':daily()},{'daily_returns.csv':daily()})
+        empty={n:df.iloc[:0] for n,df in ledger().items()}
+        r=c.compare(a,b,*self.ledgers(empty,empty))
+        self.assertEqual(r['status'],'partial_match');self.assertFalse(r['ledger_compared'])
+        self.assertFalse(r['portfolio_equivalence_verified'])
+        self.assertEqual({i['file'] for i in r['ledger_not_performed']},set(c.LEDGER_KEYS))
+        self.assertTrue(all('empty_in_both' in i['status'] for i in r['ledger_not_performed']))
+
+    def test_empty_executions_and_pnl_are_reported_not_verified(self):
+        a,b=self.run_dirs({'daily_returns.csv':daily()},{'daily_returns.csv':daily()})
+        f=ledger();f['executions.parquet']=f['executions.parquet'].iloc[:0];f['pnl.parquet']=f['pnl.parquet'].iloc[:0]
+        r=c.compare(a,b,*self.ledgers(f,f))
+        self.assertEqual(r['comparisons_performed'],['daily_returns.csv','position_audit.parquet'])
+        self.assertEqual({i['file'] for i in r['ledger_not_performed']},{'executions.parquet','pnl.parquet'})
+        self.assertEqual(r['status'],'partial_match');self.assertFalse(r['portfolio_equivalence_verified'])
+
+    def test_all_zero_holdings_are_not_coverage(self):
+        a,b=self.run_dirs({'daily_returns.csv':daily()},{'daily_returns.csv':daily()})
+        f=ledger();f['position_audit.parquet']['position_usd']=0.
+        r=c.compare(a,b,*self.ledgers(f,f))
+        self.assertNotIn('position_audit.parquet',r['comparisons_performed'])
+        self.assertFalse(r['ledger_compared']);self.assertFalse(r['portfolio_equivalence_verified'])
+        self.assertIn('no nonzero holdings',r['ledger_not_performed'][0]['status'])
+
+    def standard_table(self,turnover=342.,nav=1.51,bench=1.51):
+        return pd.DataFrame({'metric':['Ending value of the endowment','One-way turnover','Average holding period'],
+                             'units':['US$ billion','% per year','days'],'strategy':[nav,turnover,164.7],'benchmark':[bench,0.,0.]})
+
+    def test_allowed_numeric_turnover_difference(self):
+        a,b=self.run_dirs({'standard_table.csv':self.standard_table()},{'standard_table.csv':self.standard_table(turnover=345.)})
+        r=c.compare(a,b);col=r['files'][0]['columns']['strategy']
+        self.assertFalse(col['match']);self.assertEqual(col['unequal_keys'],['One-way turnover | % per year'])
+        self.assertIn('turnover-derived',col['expected_difference'])
+        self.assertTrue(r['shared_comparisons_match']);self.assertEqual(r['status'],'partial_match')  # no ledgers supplied
+
+    def test_disallowed_numeric_nav_difference(self):
+        a,b=self.run_dirs({'standard_table.csv':self.standard_table()},{'standard_table.csv':self.standard_table(turnover=345.,nav=1.52)})
+        r=c.compare(a,b);col=r['files'][0]['columns']['strategy']
+        self.assertEqual(r['status'],'mismatch');self.assertNotIn('expected_difference',col)
+        self.assertIn('Ending value of the endowment | US$ billion',col['unequal_keys'])
+        # The exemption is limited to the strategy column.
+        t=self.standard_table();t.loc[1,'benchmark']=1.
+        a,b=self.run_dirs({'standard_table.csv':self.standard_table()},{'standard_table.csv':t},tag='bench')
+        self.assertEqual(c.compare(a,b)['status'],'mismatch')
+
     def test_value_difference_is_mismatch(self):
         a,b=self.run_dirs({'daily_returns.csv':daily()},{'daily_returns.csv':daily(ret=.02)})
         self.assertEqual(c.compare(a,b)['status'],'mismatch')
