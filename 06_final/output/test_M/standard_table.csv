@@ -1,0 +1,37 @@
+metric,units,strategy,benchmark_tbill_4pct,sp500_context
+Ending value of the endowment,US$ billion,1.51,1.51,2.05
+"Ending value, before costs",US$ billion,2.09,,
+Cumulative return over the period,%,51.38,50.76,104.63
+"Annualised return (arithmetic, daily x 252)",% per year,7.82,7.28,14.08
+CAGR (ties to the endowment),% per year,7.63,7.55,13.54
+Annualised volatility (daily x sqrt 252),% per year,9.65,0.12,16.59
+"Annualised alpha vs S&P 500, monthly regression",% per year (s.e.),10.39 (4.09),n/a,n/a
+"Annualised alpha vs S&P 500, daily regression",% per year (s.e.),10.66 (4.05),n/a,n/a
+Beta vs S&P 500 - monthly coefficient,(s.e.),-0.014 (0.077),n/a,1.000
+Beta vs S&P 500 - daily coefficient,(s.e.),-0.037 (0.015),n/a,1.000
+"Beta vs S&P 500 - daily, Dimson lag 0+1",(s.e. of lag-0 term),-0.074 (0.015),n/a,n/a
+"Sharpe ratio (daily, net of all costs)",annualised,0.47,n/a (riskless premium),0.65
+"Sharpe ratio (daily, before costs)",annualised,1.07,n/a,n/a
+"Information ratio vs T-bill + 4%, before costs",annualised (daily),0.65,n/a,n/a
+"Information ratio vs T-bill + 4%, before costs",annualised (monthly),0.66,n/a,n/a
+Tracking error vs T-bill + 4%,% per year,9.66,n/a,n/a
+Maximum drawdown (daily marks),%,-9.97,0.00,-25.43
+Maximum one-month loss,%,-6.53,0.31,-9.34
+Maximum one-day loss,%,-2.90,0.02,-5.97
+Positions held,average / min / max,304 / 296 / 364,n/a,n/a
+Long / short names,average,153 / 151,n/a,n/a
+Gross exposure,"average / maximum, % of capital",182.1 / 199.4,n/a,n/a
+Net exposure,"average / min / max, % of capital",+8.8 / -2.6 / +26.7,n/a,n/a
+Largest single position,max % of capital,2.53,n/a,n/a
+One-way turnover,% per rebalance / annualised,5.8 / 342,n/a,n/a
+Rebalances,per year,59.23,n/a,n/a
+Average holding period,"trading days, measured",164.74,n/a,n/a
+"Holding period, approximation",avg gross / annual turnover x 252,134.18,n/a,n/a
+Average position size,US$ million,7.66,n/a,n/a
+Short book median market cap,US$ million,3882.36,n/a,n/a
+Trading cost,% of NAV per year,4.43,n/a,n/a
+Borrow cost,% of NAV per year,1.32,n/a,n/a
+"Information ratio, net of all costs",annualised (daily),0.06,n/a,n/a
+"Information ratio, net of all costs",annualised (monthly),0.05,n/a,n/a
+Correlation with S&P 500,daily / monthly,-0.064 / -0.022,n/a,n/a
+Hit rate: months beating the hurdle,%,47.06,n/a,n/a
