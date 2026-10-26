@@ -96,9 +96,13 @@ def _chat_openai_style(provider, model, system, user, waits=RETRY_WAITS, sleep=N
     headers = {"Content-Type": "application/json"}
     if key_env:
         headers["Authorization"] = "Bearer " + os.environ[key_env]
-    body = json.dumps({"model": model, "temperature": 0, "max_tokens": 200,
-                       "messages": [{"role": "system", "content": system},
-                                    {"role": "user", "content": user}]}).encode()
+    payload = {"model": model, "temperature": 0, "max_tokens": 200,
+               "messages": [{"role": "system", "content": system},
+                            {"role": "user", "content": user}]}
+    if provider == "ollama":
+        # small local models drift out of JSON; Ollama can constrain the output
+        payload["response_format"] = {"type": "json_object"}
+    body = json.dumps(payload).encode()
     for attempt in range(len(waits) + 1):
         try:
             req = urllib.request.Request(url, data=body, headers=headers, method="POST")
@@ -551,7 +555,10 @@ class TriageLayer:
                  cache_dir=None):
         assert mode in ("none", "rule", "ai")
         self.mode = mode
-        self.name = "triage-" + mode
+        prov = provider or AGENT_PROVIDER
+        # two AI runs with different backends must not overwrite each other;
+        # the xAI run keeps the plain name it was started under
+        self.name = "triage-" + mode + ("-" + prov if mode == "ai" and prov != "xai" else "")
         self.cfg = config or TriageConfig()
         self.provider = provider or AGENT_PROVIDER
         self.model = model or AGENT_MODEL
