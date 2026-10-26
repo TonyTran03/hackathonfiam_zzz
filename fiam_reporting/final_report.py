@@ -13,6 +13,8 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import ledger
 
+DEFAULT_MARKET_CAPS=Path(__file__).resolve().parents[1]/'01_data'/'processed'/'model_table.parquet'  # common.config.MODEL_TABLE
+
 FACTOR_NAMES=['Mkt-RF','SMB','HML','RMW','CMA','Mom']
 FACTOR_URLS={
  'ff5':'https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp/F-F_Research_Data_5_Factors_2x3_CSV.zip',
@@ -182,6 +184,35 @@ def make_charts(d,top,contrib,form):
     return figs,beta,annual
 
 
+def log_histogram(values,name,color,step=.05):
+    """Bars over log10-spaced bins; every positive value is binned, none clipped."""
+    x=np.log10(np.asarray(values,float));lo=np.floor(x.min()/step)*step;hi=np.ceil(x.max()/step)*step+step
+    counts,edges=np.histogram(x,bins=np.arange(lo,hi+step/2,step))
+    text=[f'US${10**a:,.3g}m to US${10**b:,.3g}m: {c:,} observations' for a,b,c in zip(edges[:-1],edges[1:],counts)]
+    return go.Bar(x=((edges[:-1]+edges[1:])/2).tolist(),y=counts.tolist(),width=step,name=name,hovertext=text,hoverinfo='text',marker_color=color)
+
+
+def short_book_exhibit(held,openings,sm):
+    """Exhibit 7: held short stock-days (market cap, ADV) plus the separate opening/addition eligibility diagnostic."""
+    cap=held.market_cap_million.dropna();adv=held.loc[held.liquidity_known,'adv_dollars']/1e6;oc=openings.market_cap_million.dropna()
+    age=(pd.to_datetime(held.date)-pd.to_datetime(held.liquidity_asof)).dt.days
+    f=make_subplots(rows=1,cols=3,horizontal_spacing=.07,subplot_titles=('Held shorts: prior-month-end panel me','Held shorts: engine stored 126-day ADV','Short openings/additions: prior-month-end panel me'))
+    for i,(v,name,color) in enumerate([(cap,'Held short market cap','#147d92'),(adv,'Held short ADV','#6b7f8e'),(oc,'Opening/addition market cap','#b94b50')],1):
+        if len(v):f.add_trace(log_histogram(v,name,color),row=1,col=i)
+    ticks=[.01,.1,1,10,100,1000,10000,100000,1000000]
+    for i,title in [(1,'US$ million, log scale'),(2,'US$ million, log scale'),(3,'US$ million, log scale')]:
+        f.update_xaxes(tickvals=np.log10(ticks).tolist(),ticktext=[f'{t:,.0f}' if t>=1 else f'{t:g}' for t in ticks],tickangle=0,title_text=title,row=1,col=i)
+    for i in [1,3]:f.add_vline(x=float(np.log10(500)),line_color='red',line_dash='dash',row=1,col=i)
+    f.update_yaxes(title_text='Stock-day observations',row=1,col=1);f.update_yaxes(title_text='Openings/additions',row=1,col=3)
+    def rng(v):return f'{v.min():,.3g} to {v.max():,.0f}' if len(v) else 'none'
+    note=(f"Held shorts: {sm['short_held_name_days']:,} stock-days; unmatched month-end me {sm['short_held_month_end_unmatched']:,}; below US$500m at month-end {sm['short_held_month_end_below_500m']:,} (passive drift is not an opening). Range {rng(cap)}; median {sm['short_book_median_market_cap_million'] if sm['short_book_median_market_cap_million'] is None else format(sm['short_book_median_market_cap_million'],',.0f')}.<br>"
+          f"Openings/additions: {sm['short_openings']:,}; unmatched {sm['short_openings_month_end_unmatched']:,}; below US$500m at month-end {sm['short_openings_month_end_below_500m']:,}; range {rng(oc)}. ADV range {rng(adv)}; ADV age {age.median():.0f} days median, {age.max():.0f} max; missing ADV {sm['position_liquidity_unknown']:,}.<br>"
+          "Red line: US$500m. Values are prior-month-end panel me, so this does not prove execution-day compliance. Log10 bins of 0.05; no observations dropped or clipped.")
+    f.add_annotation(text=note,xref='paper',yref='paper',x=0,y=-.3,yanchor='top',showarrow=False,align='left',xanchor='left',font=dict(size=11))
+    f.update_layout(title='7. Short book: market cap and liquidity of held short positions',template='plotly_white',showlegend=False,height=600,margin=dict(b=200),bargap=0)
+    return f
+
+
 def factor_attribution(d,factors):
     m=monthly(d).reset_index();factors=factors.copy();factors['month']=pd.PeriodIndex(factors.month,freq='M')
     if factors.month.duplicated().any():raise ValueError('Duplicate factor month')
@@ -198,7 +229,7 @@ def factor_attribution(d,factors):
     return pd.concat(rows,ignore_index=True),j
 
 
-def generate(inputs,out,factor_cache=None,nav0=1e9,ledger_dir=None,require_verified=False):
+def generate(inputs,out,factor_cache=None,nav0=1e9,ledger_dir=None,require_verified=False,market_caps=None):
     out.mkdir(parents=True,exist_ok=True)
     files=['daily_returns.csv','standard_table.csv','formation_positions.csv','top_holdings.csv','contributors.csv']
     loaded={n:pd.read_csv(inputs/n) for n in files}
@@ -210,9 +241,10 @@ def generate(inputs,out,factor_cache=None,nav0=1e9,ledger_dir=None,require_verif
     if ledger_dir is not None:
         names=pd.concat([loaded['top_holdings.csv'],loaded['contributors.csv']],ignore_index=True)[['permno','ticker','company_name']].drop_duplicates('permno')
         signals=ledger_dir.parent.parent/'signal_test.parquet';caps=None
+        # signal_test is screened, so it is a label source only; market caps come from the full monthly panel.
+        if market_caps is not None and Path(market_caps).exists():caps=ledger.load_market_caps(market_caps)
         if signals.exists():
             signal=pd.read_parquet(signals)
-            if all(c in signal for c in ['permno','eom','me']):caps=signal[['permno','eom','me']]
             if all(c in signal for c in ['permno','ticker','company_name']):
                 if 'target_month' in signal:signal=signal.sort_values('target_month')
                 names=signal.dropna(subset=['ticker','company_name']).drop_duplicates('permno',keep='last')[['permno','ticker','company_name']]
@@ -226,7 +258,7 @@ def generate(inputs,out,factor_cache=None,nav0=1e9,ledger_dir=None,require_verif
             q['ticker']=q.ticker.fillna('PERMNO')
             q['company_name']=q.company_name.fillna('Name unavailable')
         loaded['top_holdings.csv']=verified['top'];loaded['contributors.csv']=verified['contributors']
-        for name,key in [('daily_positions','positions'),('short_executions','shorts'),('execution_participation','executions'),('all_average_holdings','all_average'),('all_stock_contributors','all_contributors'),('holding_spells','spells')]:
+        for name,key in [('daily_positions','positions'),('short_executions','shorts'),('short_book_market_caps','held_shorts'),('execution_participation','executions'),('all_average_holdings','all_average'),('all_stock_contributors','all_contributors'),('holding_spells','spells')]:
             verified[key].to_csv(out/(name+'.csv'),index=False)
         d.to_csv(out/'daily_returns_verified.csv',index=False)
     elif require_verified:
@@ -247,7 +279,7 @@ def generate(inputs,out,factor_cache=None,nav0=1e9,ledger_dir=None,require_verif
         replacements={'One-way turnover':f"{sm['turnover_per_daily_rebalance_pct']:.3f} / {sm['turnover_annual_pct']:.3f}",
             'Average holding period':fmt(sm['holding_period_days']),
             'Average position size':fmt(sm['average_position_size_million']),
-            'Short book median market cap':fmt(verified['shorts'].market_cap_million.median())}
+            'Short book median market cap':fmt(sm['short_book_median_market_cap_million']) if sm['short_book_median_market_cap_million'] is not None else 'Incomplete'}
         for metric,value in replacements.items():table.loc[table.Metric==metric,'Strategy']=value
     else:
         table.loc[table.Metric=='One-way turnover','Strategy']='Pending corrected ledger'
@@ -255,14 +287,8 @@ def generate(inputs,out,factor_cache=None,nav0=1e9,ledger_dir=None,require_verif
     pd.concat([v.assign(regression=k) for k,v in regs.items()]).to_csv(out/'market_regressions.csv',index=False)
     figs,beta,annual=make_charts(d,loaded['top_holdings.csv'],loaded['contributors.csv'],form)
     if verified is not None:
-        sh=verified['shorts'];positions=verified['positions'];sm=verified['summary']
-        f=make_subplots(rows=1,cols=2,subplot_titles=('Panel market cap at actual short opening/addition (US$ million)','ADV used for the actual fill (US$ million)'))
-        f.add_trace(go.Histogram(x=sh.market_cap_million.tolist(),name='Actual short fills'),row=1,col=1)
-        f.add_vline(x=500,line_color='red',line_dash='dash',row=1,col=1)
-        f.add_trace(go.Histogram(x=(sh.adv_dollars/1e6).tolist(),name='Execution ADV'),row=1,col=2)
-        f.update_layout(title='7. Actual short openings/additions - market cap and ADV',template='plotly_white',showlegend=False)
-        f.add_annotation(text=f"Unknown market cap: {sm['short_execution_floor_unknown']}; below floor: {sm['short_execution_floor_breaches']}; fallback ADV: {sm['short_execution_adv_fallbacks']}",xref='paper',yref='paper',x=0,y=-.25,showarrow=False)
-        figs[6]=f
+        positions=verified['positions'];sm=verified['summary']
+        figs[6]=short_book_exhibit(verified['held_shorts'],verified['shorts'],sm)
         f=make_subplots(rows=1,cols=2,subplot_titles=('Actual long holdings','Actual short holdings'))
         for i,sign in enumerate([1,-1],1):
             q=positions[(np.sign(positions.position_usd)==sign)&positions.liquidity_known]
@@ -302,31 +328,37 @@ def generate(inputs,out,factor_cache=None,nav0=1e9,ledger_dir=None,require_verif
       'Cumulative active exhibit uses the relative compounded wealth ratio minus one; this aggregation convention is explicitly disclosed.'
     ]
     if verified is not None:
+        checks_panel_name=str(market_caps) if caps is not None else 'no panel (unavailable)'
         warnings=warnings[4:]
         warnings=[w for w in warnings if not w.startswith('Liquidity and short-floor')]
         warnings.insert(0,'Verified against the supplied detailed ledger: Section 9.3 turnover, daily positions, and stock P&L including delistings. This does not certify the raw market data or strategy.')
         warnings.insert(1,'Daily turnover uses all trading dates including zero-trade days, annualised by 252; carried orders are actual executions, not monthly target changes.')
         warnings.insert(2,'Holding periods are consecutive end-of-day holding spells, weighted by mean absolute dollars. Sample-boundary spells are censored and included only for observed days. Average position size is the mean absolute held name/day position.')
-        warnings.insert(3,('Short market cap is panel me (US$ million) at the latest month-end before each actual short opening/addition; the engine estimate is exported as engine_market_cap_million for reference only, because it mixes monthly shares with split-adjusted daily prices.' if 'engine_market_cap_million' in verified['shorts'] else 'Short market cap is the engine estimate at actual short openings/additions.')+' Shares and 126-day ADV are last formation inputs; their as-of dates are exported. Position-size/ADV uses actual closing holdings. Missing values and fallback ADV are explicitly counted.')
-        warnings.insert(4,'Average weights use every end-of-day snapshot, with zero for absent names. Contributors include delisting settlement P&L, but cash income and portfolio costs remain separate. Labels may use later reference dates.')
+        warnings.insert(3,'Market caps are panel me (US$ million) at the calendar month-end immediately before each date, from '+checks_panel_name+'. No older month is carried forward; unmatched observations are counted and left blank. The engine estimate (monthly shares x split-adjusted daily price) is exported as engine_market_cap_million for reference only and is never used as a fallback. Month-end checks do not verify market cap on execution days; execution-day $500m compliance remains unverified.')
+        warnings.insert(4,'Short book median market cap is the unweighted median of prior-month-end panel me across actual held short positions, one observation per stock per trading day (short_book_market_caps.csv). Short openings/additions are a separate eligibility diagnostic. Shares and 126-day ADV are last formation inputs; their as-of dates are exported. Position-size/ADV uses actual closing holdings. Missing values and fallback ADV are explicitly counted.')
+        warnings.insert(5,'Average weights use every end-of-day snapshot, with zero for absent names. Contributors include delisting settlement P&L, but cash income and portfolio costs remain separate. Labels may use later reference dates.')
         checks.update(verified['summary'])
         checks.pop('short_sample_floor_pass',None)
         checks.pop('short_sample_min_market_cap_million',None)
-        checks['short_execution_min_market_cap_million']=float(verified['shorts'].market_cap_million.min())
+        checks['market_cap_panel']=str(market_caps) if caps is not None else 'unavailable: '+str(market_caps)
         missing_names=int((verified['top'].company_name=='Name unavailable').sum()+(verified['contributors'].company_name=='Name unavailable').sum())
         checks['missing_exhibit_company_names']=missing_names
-        if require_verified and (missing_names or checks['short_execution_floor_unknown'] or checks['short_execution_adv_fallbacks'] or checks['position_liquidity_unknown'] or checks['short_execution_floor_breaches'] or not all(checks[k] for k in ['daily_position_count_pass','daily_gross_limit_pass','daily_net_limit_pass','daily_single_name_limit_pass'])):
-            raise ValueError('Ledger reconciles, but missing labels/liquidity or short-floor breaches prevent verified submission; inspect audit exports')
+        if require_verified and checks['month_end_market_cap_verification']!='complete':
+            raise ValueError('Month-end market-cap verification is incomplete (panel unavailable or unmatched short observations); inspect short_executions.csv and short_book_market_caps.csv')
+        if require_verified and (missing_names or checks['short_execution_adv_fallbacks'] or checks['position_liquidity_unknown'] or checks['short_openings_month_end_below_500m'] or not all(checks[k] for k in ['daily_position_count_pass','daily_gross_limit_pass','daily_net_limit_pass','daily_single_name_limit_pass'])):
+            raise ValueError('Ledger reconciles, but missing labels/liquidity or month-end short-floor failures prevent verified submission; inspect audit exports')
     if attribution is None:warnings.append('FF5+momentum not generated: provide --factor-cache to fetch and cache the official monthly series.')
     provenance={'run':inputs.name,'start':str(d.date.min().date()),'end':str(d.date.max().date()),'days':len(d),'months':len(monthly(d)),'start_nav':nav0,'inputs':{n:sha(inputs/n) for n in files},'script_sha256':sha(Path(__file__)),'factors':sources,'checks':checks,'limitations':warnings,'independent_full_ledger_validation':verified is not None}
     if verified is not None:
         provenance['ledger_inputs']={name:sha(ledger_dir/name) for name in ['daily.parquet','position_audit.parquet','pnl.parquet','executions.parquet']}
         if signals.exists():provenance['label_signal_sha256']=sha(signals)
+        if caps is not None:provenance['market_cap_panel']={'path':str(market_caps),'sha256':sha(Path(market_caps)),'columns':['permno','eom','me']}
     (out/'validation.json').write_text(json.dumps(provenance,indent=2))
     import html
     body='<!doctype html><html lang="en"><meta charset="utf-8"><title>FIAM final reporting</title><style>body{font:15px Arial;color:#173047;max-width:1300px;margin:35px auto;padding:20px}table{border-collapse:collapse;width:100%;font-size:12px}td,th{padding:8px;border-bottom:1px solid #dbe3e8;text-align:left}th{background:#edf4f6}.notice{background:#fff4dc;padding:16px}h1,h2{color:#126e82}@media print{.plotly-graph-div{break-inside:avoid}}</style>'
     body+=f'<h1>FIAM final reporting: {html.escape(inputs.name)}</h1><p>{d.date.min():%Y-%m-%d} to {d.date.max():%Y-%m-%d} | {len(d)} trading observations</p>'
-    body+='<p class="notice">Accounting checks passed. Detailed-ledger verification status and any outstanding limitations are listed below.</p><h2>Section 9.1</h2><p>Net performance except the first IR and tracking error, which are gross. Percentages are in percent units. Parentheses contain standard errors.</p>'+table.to_html(index=False,escape=True)
+    status='' if verified is None else f" Month-end market-cap verification: {checks['month_end_market_cap_verification']}. Execution-day market-cap compliance: {checks['execution_day_market_cap_compliance']}."
+    body+='<p class="notice">Accounting checks passed. This is not a certification of full mandate compliance.'+html.escape(status)+' Detailed-ledger verification status and outstanding limitations are listed below.</p><h2>Section 9.1</h2><p>Net performance except the first IR and tracking error, which are gross. Percentages are in percent units. Parentheses contain standard errors.</p>'+table.to_html(index=False,escape=True)
     years=len(d)/252
     body+=f'<p>Section 9.2 CAGR: net strategy {((1+d.ret).prod()**(1/years)-1)*100:.3f}%; benchmark {((1+d.hurdle).prod()**(1/years)-1)*100:.3f}%. Annualised table return is the arithmetic mean times 252.</p>'
     body+='<h2>Section 9.4: eight required exhibits</h2><p>Hover for values; drag or scroll to zoom; use the toolbar to pan, reset, or export PNG. The report works offline.</p>'
@@ -354,6 +386,7 @@ if __name__=='__main__':
     p.add_argument('--factor-cache',type=Path,help='Download/cache official FF5 + momentum ZIPs and run attribution')
     p.add_argument('--start-nav',type=float,default=1e9)
     p.add_argument('--ledger-dir',type=Path,help='06_final/data/runs/test_M from patched engine')
-    p.add_argument('--require-verified',action='store_true',help='Require a reconciled ledger and complete labels/liquidity')
-    a=p.parse_args();generate(a.inputs,a.output,a.factor_cache,a.start_nav,a.ledger_dir,a.require_verified)
+    p.add_argument('--require-verified',action='store_true',help='Require a reconciled ledger, complete labels/liquidity and complete month-end market-cap matches')
+    p.add_argument('--market-caps',type=Path,default=DEFAULT_MARKET_CAPS,help='Monthly panel with permno, eom, me (default: configured model_table.parquet)')
+    a=p.parse_args();generate(a.inputs,a.output,a.factor_cache,a.start_nav,a.ledger_dir,a.require_verified,a.market_caps)
 

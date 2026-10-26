@@ -1,3 +1,4 @@
+import hashlib
 import unittest
 import types
 from tempfile import TemporaryDirectory
@@ -26,8 +27,20 @@ class IntegrationTests(unittest.TestCase):
         pd.DataFrame({'metric':['Average holding period','Average position size'],'strategy':[0.,0.]}).to_csv(inputs/'standard_table.csv',index=False)
         r['top'].to_csv(inputs/'top_holdings.csv',index=False);r['contributors'].to_csv(inputs/'contributors.csv',index=False)
         f=e.targets.copy();f['me_form']=f.me_formation;f['leg']=np.where(f.target_usd>0,'long','short');f['days_adv']=f.target_usd.abs()/f.dolvol_126d;f.to_csv(inputs/'formation_positions.csv',index=False)
-        t,meta=final_report.generate(inputs,root/'report',ledger_dir=run,require_verified=True)
+        months=pd.period_range('2020-12',dates[-1].to_period('M'),freq='M').to_timestamp(how='end').normalize()
+        panel=pd.DataFrame([(p,m,1000.+p) for p in range(n) for m in months],columns=['permno','eom','me']);panel.to_parquet(root/'model_table.parquet',index=False)
+        before={f:hashlib.sha256(f.read_bytes()).hexdigest() for f in root.rglob('*') if f.is_file()}
+        with self.assertRaisesRegex(ValueError,'Month-end market-cap verification is incomplete'):
+            final_report.generate(inputs,root/'report_no_panel',ledger_dir=run,require_verified=True,market_caps=root/'missing.parquet')
+        t,meta=final_report.generate(inputs,root/'report',ledger_dir=run,require_verified=True,market_caps=root/'model_table.parquet')
+        self.assertEqual(before,{f:hashlib.sha256(f.read_bytes()).hexdigest() for f in before})
         assert meta['independent_full_ledger_validation']
         assert meta['checks']['stock_pnl_bridge_verified']
-        assert 'Actual daily positions' in (root/'report/report.html').read_text()
+        self.assertEqual(meta['checks']['month_end_market_cap_verification'],'complete')
+        self.assertEqual(meta['checks']['execution_day_market_cap_compliance'],'unverified')
+        self.assertNotIn('short_execution_floor_breaches',meta['checks'])
+        held=pd.read_csv(root/'report/short_book_market_caps.csv')
+        self.assertEqual(meta['checks']['short_book_median_market_cap_million'],held.market_cap_million.median())
+        html=(root/'report/report.html').read_text()
+        assert 'Actual daily positions' in html and 'prior-month-end panel me' in html and 'execution-day' in html
         print('PASS full 260-day, 300-stock engine-to-ledger-to-report integration')

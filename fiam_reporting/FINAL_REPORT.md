@@ -46,7 +46,7 @@ The ZIP does not include daily per-stock positions, trades, or signals. Therefor
 - Turnover is aggregated from the supplied daily engine field, not independently rebuilt under Section 9.3. The average is over dates with nonzero turnover; annualisation uses their observed frequency, including carried orders and risk trades. The engine's dollar-trade approximation and NAV denominators must be reconciled with exact pre/post-trade weights before certification.
 - Holding period and average position size come from the supplied standard_table.csv.
 - Top/bottom average holdings and stock contributors are supplied exports, not recalculated. Names may use later reference dates. Stock contributor P&L is divided by initial NAV and excludes portfolio cash/cost allocations.
-- Market cap and ADV plots describe formation targets, not all actual executed positions. A passing target short-floor check is not proof of execution-level compliance.
+- Market cap and ADV plots describe formation targets, not all actual executed positions. A passing target short-floor check is not proof of execution-level compliance. With the audited ledger, Exhibit 7 and the short-book median instead use held short positions and prior-month-end panel `me`; see LEDGER_HANDOFF.md.
 - Hit-rate and alpha-decay diagnostics are preserved and explicitly labelled as supplied. Recomputing them requires position episodes and dated signals.
 - Gross return adds costs back to the realised net-funded path; it is not an independent zero-cost portfolio simulation.
 
