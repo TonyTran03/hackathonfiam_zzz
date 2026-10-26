@@ -47,6 +47,10 @@ ORIGIN = {
     "test_M_nav4000m": "pre-registered capacity check",
     "test_B": "POST-HOC: run after seeing the alpha-decay result on the test window",
     "test_Q": "POST-HOC: run after seeing the alpha-decay result on the test window",
+    "test_M_triage-none": "POST-HOC triage (Amendment 2): mode none, must equal test_M",
+    "test_M_triage-rule": "POST-HOC triage (Amendment 2): fixed cost rule on top of the band",
+    "test_M_triage-ai": "POST-HOC triage (Amendment 2): AI on the same review-eligible trades",
+    "test_M_agent": "pre-registered register entry (position-risk agent layer)",
 }
 
 

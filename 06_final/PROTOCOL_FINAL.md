@@ -100,3 +100,25 @@ run on the test window and reported, not adopted.
 **Register for the test window** (one run each, all reported):
 M (headline) - W - D - M+E - M+rule layer - M at $250m / $4bn starting NAV
 (capacity, descriptive) - M+agent layer (at the event, needs an API key).
+
+## Amendment 2 -- cost-aware trade triage, POST-HOC (2026-10-25, evening)
+
+Designed AFTER the test-window register showed that trading costs take the
+book from IR 0.65 before costs to 0.06 after them. It is therefore labelled
+post-hoc everywhere it appears, and is not a candidate for the headline.
+
+- The no-triage baseline is the engine exactly as registered (`test_M`): it
+  already carries a fixed-rule triage of its own, the +/-50% no-trade band on
+  continuing names and the 10%-of-ADV daily execution cap. Mode `none`
+  reproduces it to the dollar.
+- `rule` adds a fixed cost rule on top: above 130 bp all-in, trade half;
+  above 200 bp, skip (an exit or a side flip is halved, never skipped).
+- `ai` sends the same review-eligible trades to a language model.
+- Thresholds were read off the 2019-2020 design-window cost distribution
+  (quartiles 53 / 88 / 133 bp, 90th percentile 203 bp) before any test-window
+  triage run, and are not changed after it.
+- The question the comparison answers: what does a fixed cost rule, and then
+  an AI, add ON TOP OF the band and the participation cap?
+- One run per mode on 2021-01 .. 2026-08, all reported. The position-risk
+  agent (Amendment-free, pre-registered as "M+agent layer") stays a separate
+  optional mode.
