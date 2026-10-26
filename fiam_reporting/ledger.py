@@ -8,7 +8,7 @@ def close(a,b,label,atol=.02):
         raise ValueError(label+' does not reconcile')
 
 
-def derive(d,a,pnl,executions,labels):
+def derive(d,a,pnl,executions,labels,market_caps=None):
     d=d.copy();a=a.copy();pnl=pnl.copy();ex=executions.copy()
     for frame in [d,a,pnl,ex]:frame['date']=pd.to_datetime(frame.date)
     dates=pd.DatetimeIndex(d.date);byday=d.set_index('date')
@@ -60,6 +60,15 @@ def derive(d,a,pnl,executions,labels):
     # Floor applies on every opening/addition to a short, not passive drift below the floor.
     ex['short_added_usd']=np.maximum(-ex.after_usd,0)-np.maximum(-ex.before_usd,0)
     shorts=ex[ex.short_added_usd>1e-8].copy()
+    if market_caps is not None:
+        # Engine estimate multiplies monthly shares by split-adjusted daily prices; use panel me
+        # (USD m) from the latest month-end strictly before the fill, as the formation screen does.
+        shorts['engine_market_cap_million']=shorts.market_cap_million
+        caps=market_caps[['permno','eom','me']].dropna().assign(eom=lambda x:pd.to_datetime(x.eom).astype('datetime64[ns]')).sort_values('eom')
+        shorts['_order']=np.arange(len(shorts));shorts['date']=shorts.date.astype('datetime64[ns]')
+        shorts=pd.merge_asof(shorts.sort_values('date'),caps,left_on='date',right_on='eom',by='permno',direction='backward',allow_exact_matches=False)
+        shorts=shorts.sort_values('_order').drop(columns='_order').rename(columns={'eom':'market_cap_asof'})
+        shorts['market_cap_million']=shorts.pop('me')
     shorts['floor_known']=np.isfinite(shorts.market_cap_million)
     shorts['floor_pass']=shorts.floor_known & (shorts.market_cap_million>=500)
     ex['participation']=ex.trade_usd.abs()/ex.adv_dollars
@@ -78,7 +87,7 @@ def derive(d,a,pnl,executions,labels):
                 all_average=average,all_contributors=contribution,spells=spells,summary=summary)
 
 
-def load(directory,d,labels):
+def load(directory,d,labels,market_caps=None):
     required=['daily.parquet','position_audit.parquet','pnl.parquet','executions.parquet']
     for name in required:
         if not (directory/name).exists():raise ValueError('Missing '+str(directory/name)+'; rerun patched f03_engine.py')
@@ -86,4 +95,4 @@ def load(directory,d,labels):
     if 'audit_version' not in daily or not daily.audit_version.eq(1).all():raise ValueError('Patched engine audit_version=1 required')
     if not pd.to_datetime(daily.date).reset_index(drop=True).equals(pd.to_datetime(d.date).reset_index(drop=True)):raise ValueError('Stale exports: daily date sets differ')
     for col in ['nav','ret','ret_gross','cost','borrow']:close(daily[col],d[col],'Ledger versus export '+col)
-    return derive(daily,pd.read_parquet(directory/'position_audit.parquet'),pd.read_parquet(directory/'pnl.parquet'),pd.read_parquet(directory/'executions.parquet'),labels)
+    return derive(daily,pd.read_parquet(directory/'position_audit.parquet'),pd.read_parquet(directory/'pnl.parquet'),pd.read_parquet(directory/'executions.parquet'),labels,market_caps)

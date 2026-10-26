@@ -209,13 +209,14 @@ def generate(inputs,out,factor_cache=None,nav0=1e9,ledger_dir=None,require_verif
         if (candidate/'position_audit.parquet').exists():ledger_dir=candidate
     if ledger_dir is not None:
         names=pd.concat([loaded['top_holdings.csv'],loaded['contributors.csv']],ignore_index=True)[['permno','ticker','company_name']].drop_duplicates('permno')
-        signals=ledger_dir.parent.parent/'signal_test.parquet'
+        signals=ledger_dir.parent.parent/'signal_test.parquet';caps=None
         if signals.exists():
             signal=pd.read_parquet(signals)
+            if all(c in signal for c in ['permno','eom','me']):caps=signal[['permno','eom','me']]
             if all(c in signal for c in ['permno','ticker','company_name']):
                 if 'target_month' in signal:signal=signal.sort_values('target_month')
                 names=signal.dropna(subset=['ticker','company_name']).drop_duplicates('permno',keep='last')[['permno','ticker','company_name']]
-        verified=ledger.load(ledger_dir,d,names)
+        verified=ledger.load(ledger_dir,d,names,caps)
         d=validate_daily(verified['daily'],nav0)
         pos=verified['positions']
         form=pos.rename(columns={'market_cap_million':'me_form','adv_dollars':'dolvol_126d','position_usd':'target_usd'}).copy()
@@ -255,7 +256,7 @@ def generate(inputs,out,factor_cache=None,nav0=1e9,ledger_dir=None,require_verif
     figs,beta,annual=make_charts(d,loaded['top_holdings.csv'],loaded['contributors.csv'],form)
     if verified is not None:
         sh=verified['shorts'];positions=verified['positions'];sm=verified['summary']
-        f=make_subplots(rows=1,cols=2,subplot_titles=('Market cap at actual short opening/addition (US$ million)','ADV used for the actual fill (US$ million)'))
+        f=make_subplots(rows=1,cols=2,subplot_titles=('Panel market cap at actual short opening/addition (US$ million)','ADV used for the actual fill (US$ million)'))
         f.add_trace(go.Histogram(x=sh.market_cap_million.tolist(),name='Actual short fills'),row=1,col=1)
         f.add_vline(x=500,line_color='red',line_dash='dash',row=1,col=1)
         f.add_trace(go.Histogram(x=(sh.adv_dollars/1e6).tolist(),name='Execution ADV'),row=1,col=2)
@@ -306,7 +307,7 @@ def generate(inputs,out,factor_cache=None,nav0=1e9,ledger_dir=None,require_verif
         warnings.insert(0,'Verified against the supplied detailed ledger: Section 9.3 turnover, daily positions, and stock P&L including delistings. This does not certify the raw market data or strategy.')
         warnings.insert(1,'Daily turnover uses all trading dates including zero-trade days, annualised by 252; carried orders are actual executions, not monthly target changes.')
         warnings.insert(2,'Holding periods are consecutive end-of-day holding spells, weighted by mean absolute dollars. Sample-boundary spells are censored and included only for observed days. Average position size is the mean absolute held name/day position.')
-        warnings.insert(3,'Short market cap is the engine estimate at actual short openings/additions. Shares and 126-day ADV are last formation inputs; their as-of dates are exported. Position-size/ADV uses actual closing holdings. Missing values and fallback ADV are explicitly counted.')
+        warnings.insert(3,('Short market cap is panel me (US$ million) at the latest month-end before each actual short opening/addition; the engine estimate is exported as engine_market_cap_million for reference only, because it mixes monthly shares with split-adjusted daily prices.' if 'engine_market_cap_million' in verified['shorts'] else 'Short market cap is the engine estimate at actual short openings/additions.')+' Shares and 126-day ADV are last formation inputs; their as-of dates are exported. Position-size/ADV uses actual closing holdings. Missing values and fallback ADV are explicitly counted.')
         warnings.insert(4,'Average weights use every end-of-day snapshot, with zero for absent names. Contributors include delisting settlement P&L, but cash income and portfolio costs remain separate. Labels may use later reference dates.')
         checks.update(verified['summary'])
         checks.pop('short_sample_floor_pass',None)
