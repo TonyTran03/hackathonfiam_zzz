@@ -102,7 +102,7 @@ def derive(d,a,pnl,executions,labels,market_caps=None):
     spells=q.groupby('spell').agg(permno=('permno','first'),days=('day_index','size'),mean_abs_usd=('abs_usd','mean'),first=('day_index','min'),last=('day_index','max'))
     spells['boundary_censored']=(spells['first']==0)|(spells['last']==len(d)-1)
     holding=float(np.average(spells.days,weights=spells.mean_abs_usd))
-    # Floor applies on every opening/addition to a short, not passive drift below the floor.
+    # The floor is checked on every opening/addition to a short; held shorts are reported separately.
     ex['short_added_usd']=np.maximum(-ex.after_usd,0)-np.maximum(-ex.before_usd,0)
     # Market caps come only from prior-month-end panel me; the engine estimate is kept for reference.
     shorts=attach_month_end_caps(ex[ex.short_added_usd>1e-8],market_caps)
