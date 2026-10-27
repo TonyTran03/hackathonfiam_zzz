@@ -13,6 +13,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import ledger
 
+EXPORT_SIZE={7:{'width':1600,'height':1000}}  # camera-button PNG size per exhibit (slide-ready)
 DEFAULT_MARKET_CAPS=Path(__file__).resolve().parents[1]/'01_data'/'processed'/'model_table.parquet'  # common.config.MODEL_TABLE
 
 FACTOR_NAMES=['Mkt-RF','SMB','HML','RMW','CMA','Mom']
@@ -192,24 +193,42 @@ def log_histogram(values,name,color,step=.05):
     return go.Bar(x=((edges[:-1]+edges[1:])/2).tolist(),y=counts.tolist(),width=step,name=name,hovertext=text,hoverinfo='text',marker_color=color)
 
 
+def dollars(million,digits=None):
+    """Compact US$ label for a value in US$ million: $0.1m, $500m, $1bn, $3.4tn."""
+    for scale,unit in [(1e6,'tn'),(1e3,'bn'),(1,'m')]:
+        if million>=scale or unit=='m':
+            v=million/scale
+            return f'${v:.{digits}g}{unit}' if digits else f'${v:g}{unit}'
+
+
 def short_book_exhibit(held,openings,sm):
     """Exhibit 7: held short stock-days (market cap, ADV) plus the separate opening/addition eligibility diagnostic."""
     cap=held.market_cap_million.dropna();adv=held.loc[held.liquidity_known,'adv_dollars']/1e6;oc=openings.market_cap_million.dropna()
     age=(pd.to_datetime(held.date)-pd.to_datetime(held.liquidity_asof)).dt.days
-    f=make_subplots(rows=1,cols=3,horizontal_spacing=.07,subplot_titles=('Held shorts: prior-month-end panel me','Held shorts: engine stored 126-day ADV','Short openings/additions: prior-month-end panel me'))
+    f=make_subplots(rows=1,cols=3,horizontal_spacing=.1,subplot_titles=('Held shorts<br>Prior month-end market cap','Held shorts<br>Stored 126-day ADV','Short openings/additions<br>Prior month-end market cap'))
+    f.update_annotations(font_size=17)  # only the three subplot titles exist at this point
     for i,(v,name,color) in enumerate([(cap,'Held short market cap','#147d92'),(adv,'Held short ADV','#6b7f8e'),(oc,'Opening/addition market cap','#b94b50')],1):
         if len(v):f.add_trace(log_histogram(v,name,color),row=1,col=i)
-    ticks=[.01,.1,1,10,100,1000,10000,100000,1000000]
-    for i,title in [(1,'US$ million, log scale'),(2,'US$ million, log scale'),(3,'US$ million, log scale')]:
-        f.update_xaxes(tickvals=np.log10(ticks).tolist(),ticktext=[f'{t:,.0f}' if t>=1 else f'{t:g}' for t in ticks],tickangle=0,title_text=title,row=1,col=i)
-    for i in [1,3]:f.add_vline(x=float(np.log10(500)),line_color='red',line_dash='dash',row=1,col=i)
-    f.update_yaxes(title_text='Stock-day observations',row=1,col=1);f.update_yaxes(title_text='Openings/additions',row=1,col=3)
-    def rng(v):return f'{v.min():,.3g} to {v.max():,.0f}' if len(v) else 'none'
-    note=(f"Held shorts: {sm['short_held_name_days']:,} stock-days; unmatched month-end me {sm['short_held_month_end_unmatched']:,}; held short stock-days below US$500m at prior month-end {sm['short_held_month_end_below_500m']:,}. Range {rng(cap)}; median {sm['short_book_median_market_cap_million'] if sm['short_book_median_market_cap_million'] is None else format(sm['short_book_median_market_cap_million'],',.0f')}.<br>"
-          f"Openings/additions: {sm['short_openings']:,}; unmatched {sm['short_openings_month_end_unmatched']:,}; below US$500m at month-end {sm['short_openings_month_end_below_500m']:,}; range {rng(oc)}. ADV range {rng(adv)}; ADV age {age.median():.0f} days median, {age.max():.0f} max; missing ADV {sm['position_liquidity_unknown']:,}.<br>"
-          "Red line: US$500m. Values are prior-month-end panel me, so this does not prove execution-day compliance. Log10 bins of 0.05; no observations dropped or clipped.")
-    f.add_annotation(text=note,xref='paper',yref='paper',x=0,y=-.3,yanchor='top',showarrow=False,align='left',xanchor='left',font=dict(size=11))
-    f.update_layout(title='7. Short book: market cap and liquidity of held short positions',template='plotly_white',showlegend=False,height=600,margin=dict(b=200),bargap=0)
+    # Same log10 coordinates as the bins; only the labels are compact dollar amounts (values in US$ million).
+    for i,ticks in [(1,[100,1e3,1e4,1e5,1e6]),(2,[.1,1,10,100,1e3,1e4]),(3,[100,1e3,1e4,1e5,1e6])]:
+        f.update_xaxes(tickvals=np.log10(ticks).tolist(),ticktext=[dollars(t) for t in ticks],tickangle=0,title_text='US$, log scale',row=1,col=i)
+    for i,v in [(1,cap),(3,oc)]:
+        f.add_vline(x=float(np.log10(500)),line_color='red',line_dash='dash',row=1,col=i)
+        # Keep the US$500m line clear of the y-axis labels; the bins themselves are unchanged.
+        if len(v):f.update_xaxes(range=[float(np.log10(min(v.min(),500)))-.25,float(np.log10(v.max()))+.15],row=1,col=i)
+    f.update_yaxes(title_text='Stock-day observations',row=1,col=1);f.update_yaxes(title_text='Stock-day observations',row=1,col=2);f.update_yaxes(title_text='Openings/additions',row=1,col=3)
+    def rng(v):return f'{dollars(v.min(),3)} to {dollars(v.max(),3)}' if len(v) else 'none'
+    median=sm['short_book_median_market_cap_million']
+    note='<br>'.join([
+        f"Held shorts: {sm['short_held_name_days']:,} stock-days; unmatched month-end me: {sm['short_held_month_end_unmatched']:,}; below US$500m at prior month-end: {sm['short_held_month_end_below_500m']:,}.",
+        f"Held-short market cap range {rng(cap)}; unweighted median {'unavailable' if median is None else dollars(median,3)}.",
+        f"Openings/additions: {sm['short_openings']:,}; unmatched: {sm['short_openings_month_end_unmatched']:,}; below US$500m at prior month-end: {sm['short_openings_month_end_below_500m']:,}; range {rng(oc)}.",
+        f"ADV is the engine's stored 126-day ADV: range {rng(adv)}; age {age.median():.0f} days median, {age.max():.0f} max; missing: {sm['position_liquidity_unknown']:,}.",
+        "Red line: US$500m. Market caps are prior-month-end panel me, so this does not prove execution-day compliance.",
+        "Log10 bins of 0.05; no observations dropped or clipped."])
+    f.add_annotation(text=note,xref='paper',yref='paper',x=0,y=-.19,yanchor='top',showarrow=False,align='left',xanchor='left',font=dict(size=15))
+    f.update_layout(title=dict(text='7. Short book: market cap and liquidity',font=dict(size=24)),template='plotly_white',showlegend=False,
+                    height=1000,margin=dict(t=130,b=290,l=80,r=40),bargap=0,font=dict(size=15))
     return f
 
 
@@ -364,7 +383,7 @@ def generate(inputs,out,factor_cache=None,nav0=1e9,ledger_dir=None,require_verif
     body+='<h2>Section 9.4: eight required exhibits</h2><p>Hover for values; drag or scroll to zoom; use the toolbar to pan, reset, or export PNG. The report works offline.</p>'
     for i,f in enumerate(figs,1):
         f.write_json(out/f'exhibit_{i}.json')
-        fragment=f.to_html(full_html=False,include_plotlyjs=(i==1),div_id=f'exhibit-{i}',config={'scrollZoom':True,'responsive':True,'displaylogo':False,'toImageButtonOptions':{'format':'png','filename':f'exhibit_{i}','scale':2}})
+        fragment=f.to_html(full_html=False,include_plotlyjs=(i==1),div_id=f'exhibit-{i}',config={'scrollZoom':True,'responsive':True,'displaylogo':False,'toImageButtonOptions':{'format':'png','filename':f'exhibit_{i}','scale':2,**EXPORT_SIZE.get(i,{})}})
         body+=re.sub(r'[\u3400-\u9fff]',lambda m:'\\u%04x'%ord(m.group()),fragment)
     if attribution is not None:body+='<h2>FF5 + momentum attribution</h2><p>Official monthly factors; all test months included. Coefficients and standard errors are in return-decimal units. Alpha is monthly in coefficient and annual in annualised_coefficient. Annual mean contributions are percentage points, not compounded attribution.</p>'+attribution.to_html(index=False,float_format=lambda v:f'{v:.5f}')
     for name in ['hit_rate.csv','alpha_decay.csv','sizing_vs_selection.csv']:
