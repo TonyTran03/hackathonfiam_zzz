@@ -41,10 +41,12 @@ def compare_frame(name,a,b,keys,rtol):
     for c in [c for c in a if c in b]:
         x,y=a.loc[common,c],b.loc[common,c];bad_keys=[]
         if pd.api.types.is_numeric_dtype(x) and pd.api.types.is_numeric_dtype(y):
-            x,y=x.to_numpy(float),y.to_numpy(float);both_nan=np.isnan(x)&np.isnan(y);diff=np.abs(x-y)
-            scale=np.maximum(np.abs(x),np.abs(y));rel=np.divide(diff,scale,out=np.zeros_like(diff),where=scale>0)
+            x,y=x.to_numpy(float),y.to_numpy(float);both_nan=np.isnan(x)&np.isnan(y)
+            with np.errstate(invalid='ignore'):  # NaN/inf values are reported via nan_mismatch and bad, not as warnings
+                diff=np.abs(x-y);scale=np.maximum(np.abs(x),np.abs(y));rel=np.divide(diff,scale,out=np.zeros_like(diff),where=scale>0)
             bad=(np.isnan(x)!=np.isnan(y))|(~both_nan&~np.isclose(x,y,rtol=rtol,atol=0,equal_nan=True))
-            entry={'max_abs_diff':float(np.nanmax(np.where(both_nan,0,diff))) if len(x) else 0.,'max_rel_diff':float(np.nanmax(np.where(both_nan,0,rel))) if len(x) else 0.,
+            diff,rel=np.where(both_nan|np.isnan(diff),0,diff),np.where(both_nan|np.isnan(rel),0,rel)
+            entry={'max_abs_diff':float(diff.max()) if len(x) else 0.,'max_rel_diff':float(rel.max()) if len(x) else 0.,
                    'nan_mismatch':int((np.isnan(x)!=np.isnan(y)).sum())}
         else:
             bad=(~((x.isna()&y.isna())|(x.astype(str)==y.astype(str)))).to_numpy()
@@ -58,6 +60,15 @@ def compare_frame(name,a,b,keys,rtol):
         row['columns'][c]=entry
     row['match']=bool(row['columns']) and row['keys_identical'] and all(v['match'] or 'expected_difference' in v for v in row['columns'].values())
     return row
+
+
+def holdings_coverage(path):
+    """Count finite nonzero position_usd values; a missing column or any missing/nonfinite value is invalid."""
+    q=pd.read_parquet(path)
+    if 'position_usd' not in q:return {'rows':len(q),'finite_nonzero':0,'invalid':'position_usd column missing'}
+    if not pd.api.types.is_numeric_dtype(q.position_usd):return {'rows':len(q),'finite_nonzero':0,'invalid':'position_usd is not numeric'}
+    v=q.position_usd.to_numpy(float);bad=int((~np.isfinite(v)).sum())
+    return {'rows':len(q),'finite_nonzero':int((np.isfinite(v)&(v!=0)).sum()),'invalid':f'{bad} missing or nonfinite position_usd values' if bad else None}
 
 
 def compare_files(names,left,right,keys,read,rtol):
@@ -91,15 +102,20 @@ def compare(original,other,original_ledger=None,other_ledger=None,rtol=1e-9):
                  for r in compared if r['columns_only_original'] or r['columns_only_other']]
     holdings=next((r for r in ledger_rows if r['file']=='position_audit.parquet'),None)
     if holdings is not None:
-        q=pd.read_parquet(Path(original_ledger)/'position_audit.parquet')
-        held=int((q.position_usd!=0).sum()) if 'position_usd' in q else 0
-        holdings['nonzero_positions_original']=held
-        if not held:
+        cov={side:holdings_coverage(Path(d)/'position_audit.parquet') for side,d in [('original',original_ledger),('other',other_ledger)]}
+        holdings['holdings_coverage']=cov
+        invalid={side:c['invalid'] for side,c in cov.items() if c['invalid']}
+        if invalid:
+            # Missing or nonfinite positions make the holdings unusable as evidence, whatever else matched.
+            holdings['match']=False;holdings['invalid_positions']=invalid
+        elif holdings['match'] and not any(c['finite_nonzero'] for c in cov.values()):
+            # Identical empty/zero books agree trivially: insufficient evidence, not a match. Mismatches are always kept.
             ledger_rows.remove(holdings);compared.remove(holdings)
-            not_performed.append({'file':'position_audit.parquet','status':'not performed: no nonzero holdings, so there is no holdings coverage to verify'})
-            shared_match=bool(compared) and all(r['match'] for r in compared)
+            not_performed.append({'file':'position_audit.parquet','status':'not performed: no finite nonzero holdings in either run, so there is no holdings coverage to verify'})
+        shared_match=bool(compared) and all(r['match'] for r in compared)
     ledger_done=len(ledger_rows)==len(LEDGER_KEYS)
-    if not compared:status='nothing_compared'
+    if any('invalid_positions' in r for r in compared):status='invalid'
+    elif not compared:status='nothing_compared'
     elif not shared_match:status='mismatch'
     elif issues or not_performed or column_gaps:status='partial_match'
     else:status='match'

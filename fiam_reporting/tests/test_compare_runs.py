@@ -2,6 +2,7 @@ import sys
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+import numpy as np
 import pandas as pd
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 import compare_runs as c
@@ -108,7 +109,47 @@ class CompareRunsTests(unittest.TestCase):
         r=c.compare(a,b,*self.ledgers(f,f))
         self.assertNotIn('position_audit.parquet',r['comparisons_performed'])
         self.assertFalse(r['ledger_compared']);self.assertFalse(r['portfolio_equivalence_verified'])
-        self.assertIn('no nonzero holdings',r['ledger_not_performed'][0]['status'])
+        self.assertIn('no finite nonzero holdings in either run',r['ledger_not_performed'][0]['status'])
+
+    def holdings_case(self,positions_a,positions_b):
+        """Same exports and fills/P&L in both runs; only the holdings file differs. None means an empty holdings file."""
+        a,b=self.run_dirs({'daily_returns.csv':daily()},{'daily_returns.csv':daily()},tag=self.id().split('.')[-1]+str(len(list(self.root.iterdir()))))
+        frames=[]
+        for pos in [positions_a,positions_b]:
+            f=ledger();h=f['position_audit.parquet']
+            f['position_audit.parquet']=h.iloc[:0] if pos is None else h.assign(position_usd=pos)
+            frames.append(f)
+        la,lb=self.root/(a.name+'_la'),self.root/(a.name+'_lb')
+        for d,f in zip([la,lb],frames):
+            d.mkdir()
+            for n,df in f.items():df.to_parquet(d/n,index=False)
+        return c.compare(a,b,la,lb)
+
+    def test_empty_versus_populated_holdings_is_mismatch_in_both_orders(self):
+        for pa,pb in [(None,10.),(10.,None)]:
+            r=self.holdings_case(pa,pb)
+            self.assertEqual(r['status'],'mismatch',(pa,pb));self.assertIn('position_audit.parquet',r['comparisons_performed'])
+            self.assertFalse(r['portfolio_equivalence_verified'])
+
+    def test_zero_versus_populated_holdings_is_mismatch_in_both_orders(self):
+        for pa,pb in [(0.,10.),(10.,0.)]:
+            r=self.holdings_case(pa,pb)
+            self.assertEqual(r['status'],'mismatch',(pa,pb));self.assertIn('position_audit.parquet',r['comparisons_performed'])
+            h=next(f for f in r['files'] if f['file']=='position_audit.parquet')
+            self.assertEqual(sorted(v['finite_nonzero'] for v in h['holdings_coverage'].values()),[0,2])
+
+    def test_all_nan_holdings_are_invalid(self):
+        r=self.holdings_case(np.nan,np.nan)
+        self.assertEqual(r['status'],'invalid');self.assertFalse(r['shared_comparisons_match'])
+        self.assertFalse(r['portfolio_equivalence_verified'])
+        h=next(f for f in r['files'] if f['file']=='position_audit.parquet')
+        self.assertEqual(set(h['invalid_positions']),{'original','other'})
+        r=self.holdings_case(10.,np.inf)
+        self.assertEqual(r['status'],'invalid');self.assertEqual(set(next(f for f in r['files'] if f['file']=='position_audit.parquet')['invalid_positions']),{'other'})
+
+    def test_matching_populated_holdings_verify(self):
+        r=self.holdings_case(10.,10.)
+        self.assertEqual(r['status'],'match');self.assertTrue(r['portfolio_equivalence_verified'])
 
     def standard_table(self,turnover=342.,nav=1.51,bench=1.51):
         return pd.DataFrame({'metric':['Ending value of the endowment','One-way turnover','Average holding period'],
