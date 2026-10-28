@@ -179,11 +179,59 @@ the EDGAR block loaded in one full backfill on 2026-10-13, so Carbon Arc's recei
 cannot date first availability. For the two verified firms the event date equals the
 EDGAR filing date, which can serve that purpose.
 
+## Cards 5-7: spending data for the news-to-spending sleeve
+
+Run on 2026-10-28 under the team account (context B in `dd_account_context.md`), using
+the free catalogue calls only: data-library searches and tearsheets with their data
+dictionaries. **Units used: 0.** The session made no billed call in this step.
+
+Each card uses the same verdict scale as cards 2-4, with one change for rule 4. These
+datasets are candidates for a planned sleeve, so "NOT USED" no longer applies there: rule
+4 is UNVERIFIED until `dd_coverage.py` measures zeros against missing values on the
+shared panel. Rules 3, 5 and 6 are also checked on that panel. No panel is in the repo
+yet, so every row stays catalogue-only for now.
+
+**Tearsheets found.** We searched once for each kind of data and then read the closest
+tearsheet:
+
+- **Card spend:** "Credit Card – US Complete Panel" from Facteus. A second tearsheet, "US
+  Detailed Panel", is a closed history from 2019-01 to 2025-08. We did not card it.
+- **Foot traffic:** "Foot Traffic" from PassBy.
+- **Website traffic:** "Clickstream". The tearsheet names no provider.
+
+| Rule | Card 5: card spend (Facteus) | Card 6: foot traffic (PassBy) | Card 7: website traffic (Clickstream) |
+|---|---|---|---|
+| 1. Publication lag | **UNVERIFIED.** Documented: T+3, delivered daily. Each transaction row carries only the transaction date. The only load marker is a batch label, and the sample batch is a full backfill of 2026-05-01. | **UNVERIFIED.** Documented: T+5, delivered daily. Rows carry the visit date and the month it belongs to. Each row also has a load-batch label, and the sample is an incremental drop of 2025-12-10. If old batches are kept, that label could date first availability. | **UNVERIFIED.** Documented: T+1, delivered daily. Rows carry the visit date, a device timestamp and a numeric load-batch ID. |
+| 2. Backward revisions | **UNVERIFIED, revisions documented.** The tearsheet says the panel is reweighted every month, when the vendor restates it and drops inactive cards. A card's in-scope flag reflects its current status. So past totals can change, and there is no vintage or as-of column to rebuild them. | **UNVERIFIED.** Visits are modelled, then adjusted for season, weather and holidays. Nothing says whether past values are re-modelled. No vintage column. | **UNVERIFIED.** No restatement is described. The panel is opt-in users, so its make-up can drift. No vintage column. |
+| 3. Ticker to PERMNO | **UNVERIFIED.** Keys are Carbon Arc company, brand and ticker IDs plus a current Bloomberg ticker. There is no CIK, and links have no date bounds. Brands reach a listed parent through the company ID. | **UNVERIFIED.** Keys are store ID, Placekey, brand, company and a current Bloomberg ticker. No CIK, no date bounds. | **UNVERIFIED.** Domains map to brand, company and ticker through a mapping table. The table warns that one domain can map to several rows. No date bounds. |
+| 4. Has-data flag | **UNVERIFIED.** No field separates "no spend" from "not covered". The two card flags describe the cards, not company coverage. To be measured by `dd_coverage.py`. | **UNVERIFIED.** No such field. Store-days with no row are ambiguous. To be measured by `dd_coverage.py`. | **UNVERIFIED.** No such field. |
+| 5. Coverage | **UNVERIFIED.** Catalogue totals only: 5,200+ companies, 8.8 million cards in 2024. Spend is skewed toward Iowa, Ohio and Washington. | **UNVERIFIED.** Catalogue totals only: 600+ companies, 1,200+ brands, 740,000+ stores. Skewed toward California, Texas and Florida. | **UNVERIFIED.** Catalogue totals only: 670+ companies, 2,400+ domains. Worldwide, skewed to the US, China, India and Argentina. |
+| 6. Real start date | **UNVERIFIED, conflicting.** The history field says 2019. The overview says each panel holds five and a half years, which from today would start around April 2021. The sample load is a full backfill. | **UNVERIFIED.** The history field says 2019, and a sample row is dated 2019-07. Nothing says early history is backfilled. | **UNVERIFIED.** The history field says 2020. |
+| Sleeve gate | **Passes on documentation, with a caveat.** The lag is documented. The start date passes if the 2019 figure holds, but the five-and-a-half-year note must be checked on the panel. | **Passes on documentation.** The lag is documented, and the 2019 start comes before 2021. | **Descriptive only,** as the prompts set out. Its 2020 start would pass the date rule. |
+
+What the three cards show:
+
+1. **All three document a lag, so none fails the sleeve gate on lag.** Each carries only
+   the period date per record, though, so a fixed lag would have to be applied and
+   tested.
+2. **Card spend is the clearest revision risk.** It is the only one whose documentation
+   says past values change. It also has no vintage column, so the series used in a
+   backtest would be today's restated version, not what was available at the time.
+3. **Card spend's start date is the open question.** The catalogue gives two different
+   answers. `dd_coverage.py` on the shared panel settles it with a measured start month,
+   the first month at or above half the 2024 coverage.
+4. **None of the three carries a CIK or date-bounded tickers.** Mapping to PERMNO has to
+   go through tickers we bound by date ourselves. `dd_coverage.py` counts rows that land
+   on stock-months not live in our panel, which is the sign of an unbounded link.
+
 ## What we did and did not act on
 
 - **No change to the model or the 8-K features.** This pilot does not establish that
   survivorship bias is resolved. The bias stays documented as a limitation.
 - **No asset is cleared for new features.** Nothing reached PASS.
+- **Spending sleeve:** card spend and foot traffic pass the sleeve gate on documentation
+  only. Neither feeds anything until `dd_coverage.py` has run on the shared panel. Card
+  spend's documented restatements need their own point-in-time plan.
 - **Next step, not done:** for the 25 unresolved firms, take CIKs from EDGAR and look for a
   Carbon Arc route keyed by CIK. That could be a bulk EDGAR extract, priced but not bought,
   or a support request for CIK lookup through the MCP. Then verify filing by filing as

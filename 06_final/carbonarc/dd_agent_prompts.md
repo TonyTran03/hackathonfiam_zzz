@@ -46,3 +46,30 @@ Run once per asset (CA0032 first, then 2-3 from the recommended set, e.g. CA0035
 date-bounded ticker; "not covered" distinguishable from "nothing happened"; coverage within
 50% of its 2024 level back to 2021 (our test window start); real history starts by 2019
 (design window).
+
+## Cards 5-7: spending data for the news -> spending sleeve (quality gate)
+
+Catalogue documentation only: free `data_library` / tearsheet / data-dictionary calls, no
+billed query. Report the units used; it should be 0. Same verdict scale as `dd_cards.md`
+(PASS / FAIL / UNVERIFIED / NOT USED), with one line of evidence each.
+
+> Using only Carbon Arc's free catalogue calls (data library, tearsheets, data dictionaries),
+> find the tearsheets for (a) card spend / consumer transactions, (b) foot traffic / store
+> visits and (c) website traffic. For each, name the tearsheet and provider, then answer the
+> six rules:
+> 1. Publication lag: declared lag and delivery frequency; is there a publication or
+>    availability date per record, or only the period date?
+> 2. Backward revisions: does the documentation say past values are restated (panel
+>    rebalancing, re-weighting, late-arriving transactions)? Is there a vintage or as-of column?
+> 3. Ticker -> PERMNO mapping: entity keys (ticker, CIK, brand, merchant, domain, location);
+>    how brands or domains map to a listed parent; are ticker links date-bounded?
+> 4. Has-data flag: can "no activity" be told apart from "not covered" (zero vs missing)?
+> 5. Coverage: number of companies or brands, and any coverage-by-year figures.
+> 6. Real start date: advertised history start, and any note that early history is
+>    backfilled or reconstructed.
+> Do not quote documentation text; summarise in our own words.
+
+Our extra rule for this sleeve: a dataset fails the gate if its lag is undocumented, or if
+its history does not start before the first month the chain would need it (2022 inflation
+case: data from 2021 at the latest). Website traffic (from 2020-06) is descriptive only.
+Rules 3, 5 and 6 are then checked on the shared panel with `dd_coverage.py`.
