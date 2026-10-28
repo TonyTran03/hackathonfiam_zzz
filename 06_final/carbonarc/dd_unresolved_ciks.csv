@@ -1,0 +1,26 @@
+ticker,exit_month,edgar_name,cik,edgar_8k_final_12m,last_8k_before_exit_month,carbonarc_search_result
+SAPE,2015-02,SAPIENT CORP,1008817,10,2014-12-16,not found
+CFN,2015-03,CAREFUSION Corp,1457543,13,2015-02-05,not found
+ZSPH,2015-12,"ZS Pharma, Inc.",1459266,22,2015-11-06,not found
+BXLT,2016-05,Baxalta Inc,1620546,12,2016-04-28,not found
+CVT,2016-11,CVENT INC,1122897,11,2016-10-17,not found
+RAI,2017-07,REYNOLDS AMERICAN INC,1275283,20,2017-06-22,not found
+WBMD,2017-08,WebMD Health Corp.,1326583,18,2017-07-26,not found
+CBF,2017-11,Capital Bank Financial Corp.,1479750,11,2017-10-19,not found (batched search)
+STRP,2018-02,Straight Path Communications Inc.,1574460,19,2018-01-22,not found (batched search)
+CPLA,2018-07,CAPELLA EDUCATION CO,1104349,10,2018-05-02,not found (batched search)
+LPNT,2018-11,"LEGACY LIFEPOINT HEALTH, INC. (formerly LifePoint Health)",1301611,13,2018-10-29,not found (batched search)
+VVC,2019-01,VECTREN CORP,1096385,34,2018-12-17,not found (batched search)
+DNB,2019-02,DUN & BRADSTREET CORP/NW,1115222,17,2019-01-24,ambiguous: only the 2020 relisted holding company
+NTRI,2019-03,NUTRI SYSTEM INC /DE/,1096376,12,2019-02-22,not found (batched search)
+ZAYO,2020-03,"Zayo Group Holdings, Inc.",1608249,17,2020-02-28,company entity 326174 with no filing events
+ETFC,2020-10,E TRADE FINANCIAL CORP,1015780,15,2020-07-28,not found (batched search)
+NBL,2020-10,NOBLE ENERGY INC,72207,15,2020-09-24,not found (batched search)
+BEAT,2021-02,"BIOTELEMETRY, INC.",1574774,8,2021-01-29,not found (batched search)
+BPFH,2021-06,BOSTON PRIVATE FINANCIAL HOLDINGS INC,821127,15,2021-05-27,not found (batched search)
+KDMN,2021-11,"Kadmon Holdings, Inc.",1557142,17,2021-10-28,not found (batched search)
+MGLN,2022-01,MAGELLAN HEALTH INC,19411,8,2021-12-30,not found (batched search)
+FLOW,2022-04,"SPX FLOW, Inc.",1641991,14,2022-03-03,not found (batched search)
+CLR,2022-11,"CONTINENTAL RESOURCES, INC",732834,20,2022-10-17,not found (batched search)
+CINC,2023-02,"CinCor Pharma, Inc.",1868734,12,2023-01-09,not found (batched search)
+VMW,2023-11,VMWARE LLC (formerly VMware Inc.),1124610,13,2023-10-30,not found
