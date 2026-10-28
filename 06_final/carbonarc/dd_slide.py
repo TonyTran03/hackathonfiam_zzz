@@ -1,9 +1,9 @@
 """One slide for the Carbon Arc due-diligence pilot (dd_cards.md), as a 1600 x 1000 PNG.
 
-Left: the 27 exited firms searched in Carbon Arc's CA0032 by name, the two event series
-retrieved, and the two pre-exit 8-Ks verified on SEC EDGAR. Right: the six-rule card for
+Left: the 27 exited firms, all with pre-exit 8-Ks on SEC EDGAR, and the two whose 8-K
+event series Carbon Arc's CA0032 also returned by name. Right: the six-rule card for
 three distinct recommended assets (CA0032, CA0035, CA0092). Values are typed in from
-dd_cards.md and dd_verified_filings.csv; nothing is queried here.
+dd_cards.md, dd_verified_filings.csv and dd_unresolved_ciks.csv; nothing is queried here.
 
     python 06_final/carbonarc/dd_slide.py
 """
@@ -28,8 +28,8 @@ EXITS = [  # (ticker, exit month, event series retrieved and verified on EDGAR)
     ("KDMN", "2021-11", 0), ("MGLN", "2022-01", 0), ("FLOW", "2022-04", 0), ("CLR", "2022-11", 0),
     ("CINC", "2023-02", 0), ("TWNK", "2023-11", 1), ("VMW", "2023-11", 0),
 ]
-FUNNEL = [("27", "companies\nsearched by name"), ("2", "8-K event\nseries retrieved"),
-          ("2", "pre-exit 8-Ks\nverified on EDGAR"), ("25", "companies\nunresolved")]
+FUNNEL = [("27/27", "exited firms filed\npre-exit 8-Ks on EDGAR"), ("2", "found by name\nin Carbon Arc"),
+          ("25", "on EDGAR only, no\nroute in Carbon Arc")]
 
 RULES = ["Lag dated\nper record", "No silent\nrevisions", "CIK or dated\nticker", "Has-data\nflag",
          "Coverage\nby year", "History\nby 2019"]
@@ -49,15 +49,15 @@ def main():
     plt.rcParams.update({"font.family": "DejaVu Sans", "text.color": INK})
     fig = plt.figure(figsize=(16, 10), dpi=100, facecolor=SURFACE)
 
-    fig.text(0.04, 0.93, "Carbon Arc pilot: 8-K search retrieval for firms that left the panel",
+    fig.text(0.04, 0.93, "27 of 27 exited firms filed 8-Ks on EDGAR; Carbon Arc reaches 2",
              fontsize=26, weight="bold")
     fig.text(0.04, 0.885, "Data due diligence through the Carbon Arc MCP, checked against SEC EDGAR, 2026-10-28. "
              "27 large exits, 2015-2023.", fontsize=14, color=INK2)
 
     # Left: funnel of counts
     for k, (num, lab) in enumerate(FUNNEL):
-        x = 0.04 + k * 0.105
-        fig.text(x, 0.76, num, fontsize=44, weight="bold", color=HIT if k in (1, 2) else INK)
+        x = 0.04 + k * 0.14
+        fig.text(x, 0.76, num, fontsize=44, weight="bold", color=HIT if k == 0 else INK)
         fig.text(x, 0.745, lab, fontsize=11.5, color=INK2, va="top", linespacing=1.3)
 
     ax = fig.add_axes([0.04, 0.17, 0.40, 0.49], facecolor=SURFACE)
@@ -69,13 +69,12 @@ def main():
                                     facecolor=HIT if hit else SURFACE, edgecolor=HIT if hit else GRID, lw=2))
         ax.text(x + 0.12, y + 0.06, tic, fontsize=13, weight="bold", va="center", color="white" if hit else INK)
         ax.text(x + 0.12, y - 0.20, month, fontsize=10, va="center", color="white" if hit else MUTED)
-        ax.text(x + 0.88, y - 0.07, "✓ verified" if hit else "not found", fontsize=11, ha="right",
+        ax.text(x + 0.88, y - 0.07, "✓ both" if hit else "EDGAR", fontsize=11, ha="right",
                 va="center", color="white" if hit else MUTED)
     ax.set_xlim(0, 3)
     ax.set_ylim(-(n // 3) + 0.5, 0.5)
     ax.axis("off")
-    fig.text(0.04, 0.135, "Verified: Nortek, Inc. (CIK 1216596) 8-K of 2016-07-06 and Hostess Brands, Inc.\n"
-             "(CIK 1644406) 8-K of 2023-09-12, both item 1.01 merger agreements.",
+    fig.text(0.04, 0.135, "All 27 have a CIK and 8 to 34 8-Ks on EDGAR in their final\n12 months (median 14). Blue: also found in Carbon Arc and\nmatched date by date (Nortek, Hostess Brands).",
              fontsize=11, color=INK2, va="top", linespacing=1.4)
 
     # Right: six-rule card

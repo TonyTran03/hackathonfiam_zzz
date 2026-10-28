@@ -16,16 +16,23 @@ The SEC EDGAR checks do not depend on the account.
 
 ## Summary
 
+**Headline: all 27 exited firms filed 8-Ks on SEC EDGAR in their final 12 months (8 to 34
+filings each), but Carbon Arc's name search retrieved only 2 of them.** The filings exist
+at the source; what is missing is a route to them keyed by CIK. EDGAR itself is that route.
+
 | Step | Count |
 |---|---|
+| Exited firms with 8-K filings on SEC EDGAR in their final 12 months | **27 of 27** |
 | Companies searched in CA0032 by name | 27 |
 | 8-K event series retrieved | 2 (Nortek, Hostess Brands) |
 | Retrieved series with legal entity confirmed on SEC EDGAR | 2 |
 | Pre-exit 8-Ks verified as documents on EDGAR (accession and URL recorded) | 2 |
 | Pre-exit 8-K dates in the final 12 months matched to the EDGAR filing index | 21 (10 Nortek, 11 Hostess) |
-| Companies unresolved | 25 |
+| Companies unresolved in Carbon Arc (all 25 have CIKs and pre-exit 8-Ks on EDGAR) | 25 |
 
-This pilot does not establish that survivorship bias is resolved.
+This pilot does not establish that survivorship bias is resolved: it shows the gap is in
+the supplied file and in Carbon Arc's lookup, not in the filings, for a sample of 27 of
+the 672 large exits.
 
 ## Method
 
@@ -114,9 +121,38 @@ What the verification shows:
 3. **Item codes exist upstream but not in the MCP rows.** EDGAR's index carries item codes,
    which identify both merger 8-Ks. The Carbon Arc event rows do not.
 
+### All 27 on SEC EDGAR
+
+For the 25 firms Carbon Arc did not return, we looked up each legal entity and CIK by name
+in EDGAR's company search and counted its 8-K filings from the EDGAR filing index. The
+results are in `dd_unresolved_ciks.csv`; Hostess Brands and Nortek are in
+`dd_verified_filings.csv`.
+
+| | Result |
+|---|---|
+| Exited firms with a CIK found on EDGAR | 27 of 27 |
+| Firms with at least one 8-K in the 12 months ending with the exit month | 27 of 27 |
+| 8-K filings per firm in that window, the 25 unresolved | 8 to 34 (median 14) |
+| 8-K dates in that window, Hostess Brands and Nortek | 11 and 10 |
+| Last 8-K before the exit month began, the 25 unresolved | 2 to 65 days before; median 9 days |
+| Same, Hostess Brands and Nortek | 50 and 26 days before |
+
+- **Count definition.** Filings of form 8-K, not 8-K/A amendments, filed in the 12 calendar
+  months ending with the exit month. The two Carbon Arc hits are counted as distinct dates,
+  because that is what Carbon Arc returns.
+- **Spot check.** We re-pulled four firms from EDGAR's submissions data (Reynolds American,
+  Noble Energy, Magellan Health, Vectren). All four counts and last pre-exit dates match the
+  CSV on the definition above.
+- **Entity caveats.** LifePoint and VMware appear on EDGAR under their post-merger names
+  (Legacy LifePoint Health; VMware LLC), on the same CIK. Dun & Bradstreet is the CIK of the
+  company taken private in 2019 (1115222), not its 2020 relisted successor.
+- **What this does not show.** It does not show that Carbon Arc holds these filings, and
+  nothing was rebuilt: our 8-K features still come from the supplied file. A fix would key
+  EDGAR by CIK and link CIK to permno with dates, which is the rebuild we deferred today.
+
 ### Unresolved cases and access limits
 
-- **25 companies are unresolved.** 23 returned no series in name search, Zayo has a company
+- **25 companies are unresolved in Carbon Arc, though all 25 are on EDGAR.** 23 returned no series in name search, Zayo has a company
   entity with no filing events, and Dun & Bradstreet resolves only to its 2020 successor.
   For these firms, a miss means our name searches found nothing. It does not show that
   Carbon Arc lacks their filings.
@@ -130,7 +166,8 @@ What the verification shows:
 **Background, not comparable with the pilot above.** In round one, 13% of later-exiting
 firms had any 8-K in the supplied file. The organisers' sheet lists 326 of 330 large exits
 as missing. Those figures measure the supplied file, over a different set of firms, with a
-different method.
+different method. Read together with the 27 of 27 above, they say the same thing: exiting
+firms keep filing 8-Ks until they leave, and the supplied file drops them.
 
 ## Cards 2-4: the six-rule card
 
@@ -232,8 +269,9 @@ What the three cards show:
 - **Spending sleeve:** card spend and foot traffic pass the sleeve gate on documentation
   only. Neither feeds anything until `dd_coverage.py` has run on the shared panel. Card
   spend's documented restatements need their own point-in-time plan.
-- **Next step, not done:** for the 25 unresolved firms, take CIKs from EDGAR and look for a
-  Carbon Arc route keyed by CIK. That could be a bulk EDGAR extract, priced but not bought,
-  or a support request for CIK lookup through the MCP. Then verify filing by filing as
-  for the two firms here. A CA0092 card needs its tearsheet, which means asking Carbon Arc
-  whether our account can see it.
+- **Done: CIKs and pre-exit 8-Ks from EDGAR for all 25 unresolved firms** (27 of 27 with
+  the two hits; see "All 27 on SEC EDGAR").
+- **Next step, not done:** a Carbon Arc route keyed by CIK, so the same filings could come
+  through the competition's data provider. `dd_carbonarc_request.md` drafts the support
+  request; a bulk extract would be a purchase. A CA0092 card needs its tearsheet, which
+  means asking Carbon Arc whether our account can see it.
