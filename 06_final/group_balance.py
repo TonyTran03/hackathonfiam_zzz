@@ -2,24 +2,17 @@ import numpy as np
 import pandas as pd
 
 
-def group_balance(target, perms_n, g, nav, gross_goal, industry_cap=None, iters=30):
-    """Sector-neutral, optionally industry-capped, book at formation.
+def group_balance(target, perms_n, g, nav, gross_goal, industry_cap=None, iters=30, fill_rounds=25):
+    """Sector-neutral (optionally industry-capped) book at formation.
 
-    target      : $ positions per permno index (len = perms_n), output of the usual
-                  selection / inverse-vol sizing / no-trade band
-    g           : this month's rows with columns pi, gics, cap (fraction of NAV)
-    gross_goal  : gross we would like to keep (fraction of NAV), e.g. GROSS_TARGET
-    industry_cap: max |net| per GICS 6-digit industry, fraction of NAV (e.g. 0.02);
-                  None = sector-neutral only
+    Phase A, SHRINK (unchanged from v1): industry cap -> sector net 0 (heavier
+    side down; one-sided sector closed) -> per-name caps, repeated until stable.
 
-    Every step below only SHRINKS positions, so nothing re-breaks a cap:
-      1. industry: if |net| > cap, scale the heavier side of that industry down
-      2. sector  : scale the heavier side down to the lighter side (net = 0);
-                   a one-sided sector is closed
-      3. per-name liquidity / 5% caps
-    Repeated until stable. Then ONE uniform scale-up restores gross as far as
-    the caps and the industry limit allow; a uniform scale keeps every sector
-    at exactly 0 and every industry inside its cap.
+    Phase B, REFILL (v2; replaces v1's single uniform scale-up, which any one
+    name sitting at its cap blocked, so gross fell to ~90-115%): scale every
+    name that still has room up toward the gross goal, each clipped at its own
+    cap, then run Phase A again to restore the constraints. Repeat until gross
+    stops rising. Constraints hold after every round because Phase A ends it.
     Returns new target ($), max |sector net| and max |industry net| (% of NAV),
     and the gross reached (fraction of NAV).
     """
@@ -40,32 +33,37 @@ def group_balance(target, perms_n, g, nav, gross_goal, industry_cap=None, iters=
         H = L if net > 0 else S
         t[side] *= max(H - (abs(net) - allowed), 0.0) / H
 
-    for _ in range(iters):
-        before = t.copy()
-        if industry_cap is not None:
-            for k in np.unique(ind[t != 0]):
-                shrink_heavy(ind == k, industry_cap * nav)
-        for k in np.unique(sec[t != 0]):
-            m = sec == k
-            if (t[m] > 0).any() and (t[m] < 0).any():
-                shrink_heavy(m, 0.0)
-            else:
-                t[m] = 0.0
-        t = np.clip(t, -caps, caps)
-        if np.abs(t - before).max() < 1.0:          # $1 tolerance
-            break
+    def shrink_phase():
+        nonlocal t
+        for _ in range(iters):
+            before = t.copy()
+            if industry_cap is not None:
+                for k in np.unique(ind[t != 0]):
+                    shrink_heavy(ind == k, industry_cap * nav)
+            for k in np.unique(sec[t != 0]):
+                m = sec == k
+                if (t[m] > 0).any() and (t[m] < 0).any():
+                    shrink_heavy(m, 0.0)
+                else:
+                    t[m] = 0.0
+            t = np.clip(t, -caps, caps)
+            if np.abs(t - before).max() < 1.0:
+                break
 
-    gross = np.abs(t).sum()
-    if gross > 0:
-        f = gross_goal * nav / gross
-        held = t != 0
-        f = min(f, np.min(caps[held] / np.abs(t[held])))
-        if industry_cap is not None:
-            nets = [abs(t[ind == k].sum()) for k in np.unique(ind[held])]
-            mx = max(nets) if nets else 0.0
-            if mx > 1e-9:
-                f = min(f, industry_cap * nav / mx)
-        t *= max(f, 1.0)
+    shrink_phase()
+    goal = gross_goal * nav
+    for _ in range(fill_rounds):
+        gross = np.abs(t).sum()
+        if gross <= 0 or gross >= goal * 0.999:
+            break
+        room = (t != 0) & (np.abs(t) < caps - 1.0)
+        if not room.any():
+            break
+        f = goal / gross
+        t[room] = np.sign(t[room]) * np.minimum(np.abs(t[room]) * f, caps[room])
+        shrink_phase()
+        if np.abs(t).sum() <= gross * 1.0005:          # no more progress
+            break
 
     held = t != 0
     sn = max([abs(t[sec == k].sum()) for k in np.unique(sec[held])] or [0.0]) / nav

@@ -162,3 +162,23 @@ next to the headline and the sector-neutral book; the headline is unchanged.
   windows; both are reported with and without the futures hedge (`f11`).
 - `f11_beta_hedge.py` also writes the daily hedge ratio (`hedge_ratio.csv`), so
   the futures leg can be shown in the Arcana uploads. Nothing else changes.
+
+## Amendment 5 -- refill step in group_balance (bug fix), POST-HOC (2026-10-28)
+
+Amendment 4's runs collapsed formation gross (sector-neutral 114% avg / 74% min,
+industry-capped 91% / 66%), against 166% for the Amendment 3 book. Cause: the
+single uniform scale-up at the end of group_balance was limited by the most
+constrained name, and many names sit at their liquidity caps, so it almost
+never scaled up. That defeated the stated intent ("recover gross as far as the
+name caps and the industry cap allow").
+
+Fix: replace the uniform scale-up with a refill loop. Scale every name that
+still has room toward the gross goal (each clipped at its own cap), then rerun
+the shrink phase so the sector-zero and industry-cap constraints hold again;
+repeat until gross stops rising. Nothing else changes.
+
+Committed BEFORE any run with it. Amendment 4's results are reported as they
+are; Amendment 5's are reported whatever they show. This is the last
+construction change before the presentation; the headline is unchanged.
+
+- Amendment 4's run folders are kept as `*_a4` so they are not overwritten.
