@@ -15,6 +15,7 @@ measures, from the data itself, the parts of the card that row counts can answer
   names and for names live in our panel.
 - Has-data (rule 4): zero values reported separately from missing ones.
 
+The map itself is written to <stem>_permno_map.csv (ticker, month, permno, map_status).
 Nothing here reads returns. Outputs go next to the panel unless --output is given; the panel
 is licensed Carbon Arc data, so keep both out of the repo.
 
@@ -169,6 +170,10 @@ def main():
     m.to_csv(out / f"{stem}.csv")
     names.to_csv(out / f"{stem}_by_name.csv", index=False)
     p[~p.map_status.str.startswith("matched")].to_csv(out / f"{stem}_not_live_rows.csv", index=False)
+    # The join for downstream use: keys and status only, no vendor values. Keep rows whose
+    # map_status starts with "matched"; the others are not a live stock that month.
+    p[["id", "month", "permno", "map_status"]].rename(columns={"id": key}).assign(month=lambda d: d.month.astype(str), permno=lambda d: d.permno.astype("Int64")) \
+        .to_csv(out / f"{stem}_permno_map.csv", index=False)
     chart(m, base, args.label, out / f"{stem}.png")
     full = len(m)
     print(f"{args.label}: {p.id.nunique()} {key}s, {m.index[0]} to {m.index[-1]} ({full} months); "
@@ -181,7 +186,7 @@ def main():
               f"2021-01 {m.loc[pd.Period('2021-01', 'M'), col] if pd.Period('2021-01', 'M') in m.index else 'n/a'}")
     print("  map status (rows):", p.map_status.value_counts().to_dict())
     print(f"  zero values: {int((p.value == 0).sum())}; missing values: {int(p.value.isna().sum())}")
-    print(f"-> {out / stem}.csv, _by_name.csv, _not_live_rows.csv, .png")
+    print(f"-> {out / stem}.csv, _by_name.csv, _not_live_rows.csv, _permno_map.csv, .png")
 
 
 if __name__ == "__main__":

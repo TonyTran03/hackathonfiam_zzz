@@ -177,7 +177,8 @@ date-bounded ticker; "not covered" distinguishable from "nothing happened"; cove
 
 How to read the verdicts:
 
-- **PASS** would mean we checked the rule on records across the asset. None reached PASS.
+- **PASS** would mean we checked the rule on records across the asset. None of cards 2-4
+  reached PASS. Cards 5 and 6 were later checked on the shared panels (see their panel check).
 - **FAIL** would mean the evidence shows the rule cannot be met by any route. None reached
   FAIL. A missing CIK, for example, closes the CIK route but leaves date-bounded ticker
   matching open, so that is UNVERIFIED.
@@ -322,7 +323,8 @@ descriptive.
 
 - **No change to the model or the 8-K features.** This pilot does not establish that
   survivorship bias is resolved. The bias stays documented as a limitation.
-- **No asset is cleared for new features.** Nothing reached PASS.
+- **Foot traffic is cleared for the sleeve on rules 3-6** (lag and vintage on documentation
+  only); **card spend is descriptive only.** No other asset is cleared.
 - **Spending sleeve:** foot traffic passes the gate on the shared panel (rules 3-6), and it is
   the dataset the sleeve will use. Join it to permno with the date-bounded map in
   `dd_coverage.py`, keeping only rows on a live stock-month. Card spend stays descriptive:
