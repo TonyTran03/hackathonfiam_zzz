@@ -54,6 +54,7 @@ def coverage(p, chars):
     p_live = pd.Series([(a, b) in live for a, b in zip(p.permno, p.month)], index=p.index)
     m["rows_not_live_in_our_panel"] = p[~p_live].groupby("month").size().reindex(m.index).fillna(0).astype(int)
     base = m.loc[m.index.year == 2024, "names_with_value"].mean()
+    base = float(base) if pd.notna(base) and base > 0 else None   # no 2024 rows (or none with a value): no baseline
     m["pct_of_2024_level"] = 100 * m.names_with_value / base if base else float("nan")
     m.index.name = "month"
     return m, base, p[~p_live]
@@ -97,9 +98,12 @@ def main():
     m.to_csv(out / f"{stem}.csv")
     dead.to_csv(out / f"{stem}_not_live_rows.csv", index=False)
     chart(m, base, args.label, out / f"{stem}.png")
-    start = m.index[m.names_with_value >= base / 2][0] if base else None
-    print(f"{args.label}: {p.permno.nunique()} permnos, {m.index[0]} to {m.index[-1]}, 2024 average {base:.0f} names")
-    print(f"first month at half the 2024 level: {start}; 2021-01 at {m.pct_of_2024_level.get(pd.Period('2021-01', 'M'), float('nan')):.0f}% of 2024")
+    reached = m.index[m.names_with_value >= base / 2] if base else m.index[:0]
+    start = reached[0] if len(reached) else None
+    print(f"{args.label}: {p.permno.nunique()} permnos, {m.index[0]} to {m.index[-1]}, "
+          + (f"2024 average {base:.0f} names" if base else "no 2024 values, so no baseline: rules 5 and 6 cannot be scored"))
+    if base:
+        print(f"first month at half the 2024 level: {start or 'never'}; 2021-01 at {m.pct_of_2024_level.get(pd.Period('2021-01', 'M'), float('nan')):.0f}% of 2024")
     print(f"rows not live in our panel: {len(dead)} ({dead.permno.nunique()} permnos); zero values: {int((p.value == 0).sum())}; missing values: {int(p.value.isna().sum())}")
     print(f"-> {out / stem}.csv/.png")
 
