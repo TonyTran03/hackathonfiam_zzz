@@ -8,6 +8,12 @@ Nothing here feeds the model.
 This file is our own summary. It contains no text copied from Carbon Arc, its catalogue
 or the filings behind it.
 
+**Account context.** Every Carbon Arc result below came through Bohan's MCP connection
+(context A), and which account it was signed in to is not confirmed. After reconnecting
+to the team account (context B), a successful query, an unresolved query and three
+catalogue checks gave identical results and permissions. See `dd_account_context.md`.
+The SEC EDGAR checks do not depend on the account.
+
 ## Summary
 
 | Step | Count |
