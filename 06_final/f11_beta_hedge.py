@@ -53,6 +53,8 @@ def main(labels):
         ir0, b0 = stats(d["ret"], d)
         ret_h, h, cost = hedge(d)
         ir1, b1 = stats(pd.Series(ret_h, index=d.index), d)
+        # daily hedge ratio, so the futures leg can be added to an Arcana upload
+        pd.DataFrame({"date": d["date"], "h": h}).to_csv(F.DATA / "runs" / lab / "hedge_ratio.csv", index=False)
         yrs = len(d) / 252
         print("%-24s IR %+.2f -> %+.2f   beta %+.3f -> %+.3f   avg hedge %+.2f   futures cost %.1f bp/yr"
               % (lab, ir0, ir1, b0, b1, h.mean(), 1e4 * cost.sum() / yrs))

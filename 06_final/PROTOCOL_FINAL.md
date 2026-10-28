@@ -143,3 +143,22 @@ the headline (`test_M`), never in place of it.
   (`Engine.sector_balance`) is the version reported, whatever it shows, on
   both windows, with and without the futures hedge. The buggy runs are not
   reported as the variant's result. Nothing else in the engine changes.
+
+## Amendment 4 -- industry cap inside the sector-neutral book, MENTOR-PROMPTED and POST-HOC (2026-10-28)
+
+Industry cap 2% of NAV at GICS 6-digit plus exact sector neutrality, with a
+uniform gross scale-up limited by name caps and the industry cap. Chosen after
+mentor review (Oct 28) and BEFORE any run with it. Reported whatever it shows,
+next to the headline and the sector-neutral book; the headline is unchanged.
+
+- Prompted by Arcana attributing about 7% of the sector-neutral book's return
+  to industry factors: GICS sectors were at 0 net, finer industries were not.
+- `group_balance.py` replaces `Engine.sector_balance`: every step only shrinks
+  positions (industry cap, then sector balance, then per-name caps, repeated
+  until stable), then one uniform scale-up recovers gross as far as the name
+  caps and the industry cap allow.
+- `--sector-neutral --industry-cap 2` is the new variant. `--sector-neutral`
+  alone now also uses `group_balance` (no industry cap) and is run again on both
+  windows; both are reported with and without the futures hedge (`f11`).
+- `f11_beta_hedge.py` also writes the daily hedge ratio (`hedge_ratio.csv`), so
+  the futures leg can be shown in the Arcana uploads. Nothing else changes.

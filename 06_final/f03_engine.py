@@ -44,6 +44,7 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import fconfig as F  # noqa: E402
 import f02_signal as S  # noqa: E402
+from group_balance import group_balance  # noqa: E402
 
 H = F.HOUSE
 FIN = F.FINAL
@@ -128,14 +129,16 @@ def leg_weights(vol, caps, notional):
 class Engine:
     def __init__(self, window, freq="M", overlay=None, layer=None, seed_legs=None, triage=None,
                  label=None, cost_scale=1.0, start_nav=None, cost_mode="sqrt:0.7",
-                 borrow_mode="model", sector_neutral=False):
+                 borrow_mode="model", sector_neutral=False, industry_cap=None):
         self.window, self.freq, self.overlay, self.layer = window, freq, overlay, layer
         self.triage = triage            # f04_risk_layer.TriageLayer, optional
         self.sector_neutral = sector_neutral
-        self.label = label or "%s_%s%s%s%s%s" % (window, freq, "_" + overlay if overlay else "",
-                                                 "_" + layer.name if layer else "",
-                                                 "_" + triage.name if triage else "",
-                                                 "_secneu" if sector_neutral else "")
+        self.industry_cap = industry_cap
+        self.label = label or "%s_%s%s%s%s%s%s" % (window, freq, "_" + overlay if overlay else "",
+                                                   "_" + layer.name if layer else "",
+                                                   "_" + triage.name if triage else "",
+                                                   "_secneu" if sector_neutral else "",
+                                                   "_ind%g" % (100 * industry_cap) if industry_cap else "")
         self.cost_scale = cost_scale
         self.start_nav = start_nav or FIN["start_nav"]
         self.cost_mode, self.borrow_mode = cost_mode, borrow_mode
@@ -252,16 +255,19 @@ class Engine:
                 capd = g.set_index("pi")["cap"].reindex(np.where(free)[0]).values * nav
                 target[free] = np.clip(target[free] * (want - kept) / tf, -capd, capd)
         target = np.where(keep, x, target)
-        sector_net = {}
+        sector_net, max_ind, gross_now = {}, None, None
         if self.sector_neutral:
-            target, sector_net = self.sector_balance(target, g, nav)
+            target, max_sec, max_ind, gross_now = group_balance(
+                target, len(self.perms), g, nav, GROSS_TARGET, self.industry_cap)
+            sector_net = {"max": max_sec}
         info = {"est_beta_long": est_l, "est_beta_short": est_s,
                 "used_beta_long": bl, "used_beta_short": bs,
                 "measured": measured, "long_notional": lplaced, "short_notional": splaced,
                 "n_long": len(lnames), "n_short": len(snames),
                 "long_extended": len(lnames) - len(longs),
                 "short_extended": len(snames) - len(shorts),
-                "max_abs_sector_net": max(map(abs, sector_net.values())) if sector_net else None}
+                "max_abs_sector_net": max(map(abs, sector_net.values())) if sector_net else None,
+                "max_abs_industry_net": max_ind, "formation_gross": gross_now}
         self.month_target_w = target / nav
         self.month_rows = g
         return target, info
@@ -736,6 +742,8 @@ if __name__ == "__main__":
     ap.add_argument("--borrow", default="model", choices=["model", "flat"])
     ap.add_argument("--sector-neutral", action="store_true",
                     help="POST-HOC: equal long/short dollars per GICS sector")
+    ap.add_argument("--industry-cap", type=float, default=None,
+                    help="POST-HOC: max |net| per GICS 6-digit industry, % of NAV")
     a = ap.parse_args()
     lay = None
     if a.layer:
@@ -751,13 +759,16 @@ if __name__ == "__main__":
                                                a.cost.replace(":", ""), a.borrow)
     if label and a.sector_neutral:
         label += "_secneu"
+    if label and a.industry_cap:
+        label += "_ind%g" % a.industry_cap
     tri = None
     if a.triage:
         import f04_risk_layer as RL
         tri = RL.TriageLayer(a.triage)
     e = Engine(a.window, a.freq, a.overlay, layer=lay, label=label, start_nav=a.nav,
                cost_mode=a.cost, borrow_mode=a.borrow, triage=tri,
-               sector_neutral=a.sector_neutral).run()
+               sector_neutral=a.sector_neutral,
+               industry_cap=a.industry_cap / 100 if a.industry_cap else None).run()
     save(e)
     if lay is not None:
         lay.write_log(e.label)
