@@ -128,12 +128,14 @@ def leg_weights(vol, caps, notional):
 class Engine:
     def __init__(self, window, freq="M", overlay=None, layer=None, seed_legs=None, triage=None,
                  label=None, cost_scale=1.0, start_nav=None, cost_mode="sqrt:0.7",
-                 borrow_mode="model"):
+                 borrow_mode="model", sector_neutral=False):
         self.window, self.freq, self.overlay, self.layer = window, freq, overlay, layer
         self.triage = triage            # f04_risk_layer.TriageLayer, optional
-        self.label = label or "%s_%s%s%s%s" % (window, freq, "_" + overlay if overlay else "",
-                                               "_" + layer.name if layer else "",
-                                               "_" + triage.name if triage else "")
+        self.sector_neutral = sector_neutral
+        self.label = label or "%s_%s%s%s%s%s" % (window, freq, "_" + overlay if overlay else "",
+                                                 "_" + layer.name if layer else "",
+                                                 "_" + triage.name if triage else "",
+                                                 "_secneu" if sector_neutral else "")
         self.cost_scale = cost_scale
         self.start_nav = start_nav or FIN["start_nav"]
         self.cost_mode, self.borrow_mode = cost_mode, borrow_mode
@@ -211,6 +213,11 @@ class Engine:
         if abs(ln - sn) > H["net_cap"]:
             ln = (GROSS_TARGET + np.sign(ln - sn) * H["net_cap"]) / 2
             sn = GROSS_TARGET - ln
+        if self.sector_neutral:
+            # POST-HOC (mentor review, Oct 28): equal long and short dollars in
+            # every GICS sector; market beta is left to an index-futures
+            # overlay applied afterwards (f11_beta_hedge.py), not to leg sizes
+            ln = sn = GROSS_TARGET / 2
 
         # capacity: extend a leg with the next names until its caps absorb it
         def place(names, rest, notional, sign):
@@ -245,15 +252,90 @@ class Engine:
                 capd = g.set_index("pi")["cap"].reindex(np.where(free)[0]).values * nav
                 target[free] = np.clip(target[free] * (want - kept) / tf, -capd, capd)
         target = np.where(keep, x, target)
+        sector_net = {}
+        if self.sector_neutral:
+            target, sector_net = self.sector_balance(target, g, nav)
         info = {"est_beta_long": est_l, "est_beta_short": est_s,
                 "used_beta_long": bl, "used_beta_short": bs,
                 "measured": measured, "long_notional": lplaced, "short_notional": splaced,
                 "n_long": len(lnames), "n_short": len(snames),
                 "long_extended": len(lnames) - len(longs),
-                "short_extended": len(snames) - len(shorts)}
+                "short_extended": len(snames) - len(shorts),
+                "max_abs_sector_net": max(map(abs, sector_net.values())) if sector_net else None}
         self.month_target_w = target / nav
         self.month_rows = g
         return target, info
+
+    def sector_balance(self, target, g, nav):
+        """Equal long and short dollars in every GICS sector, total gross kept
+        where the caps allow it, no name above its cap. A sector with names on
+        one side only is closed (nothing in that sector to offset it).
+
+        Amendment 3 fix. Each side of a sector holds at most the sum of its
+        names' caps, so a sector carries at most min(long capacity, short
+        capacity) per side. Each sector starts at the midpoint of its two
+        sides; one common factor scales every sector toward the original
+        gross, each stopping at its capacity. A sector whose lighter side is
+        capped is therefore balanced by scaling its heavier side DOWN, and the
+        freed gross goes to sectors with room. Within a side, names keep their
+        relative sizes; any excess over a cap moves to that side's uncapped
+        names. (The first version clipped to the caps after balancing, which
+        undid the balance wherever the lighter side was capped.)
+        Returns the new target ($) and each sector's net weight (% of NAV)."""
+        sec = np.full(len(self.perms), "zz", dtype=object)
+        sec[g["pi"].values] = g["sector"].astype(str).values
+        caps = np.zeros(len(target))
+        caps[g["pi"].values] = g["cap"].values * nav
+        t = target.astype(float).copy()
+        gross0 = np.abs(t).sum()
+        # a name kept by the no-trade band may sit above today's cap: never
+        # force a sale just to balance, never let it grow either
+        caps = np.maximum(caps, np.abs(t))
+        secs, mid, room = [], [], []
+        for s in np.unique(sec[t != 0]):
+            m = sec == s
+            lo, sh = m & (t > 0), m & (t < 0)
+            if not lo.any() or not sh.any():
+                t[m] = 0.0
+                continue
+            secs.append(s)
+            mid.append((t[lo].sum() - t[sh].sum()) / 2)
+            room.append(min(caps[lo].sum(), caps[sh].sum()))
+        mid, room = np.array(mid), np.array(room)
+
+        def side(k):                                      # dollars per side
+            return np.minimum(k * mid, room)
+
+        if len(secs) and 2 * room.sum() > gross0:
+            lo_k, hi_k = 0.0, 1.0
+            while 2 * side(hi_k).sum() < gross0:
+                hi_k *= 2
+            for _ in range(60):                           # bisection on k
+                k = (lo_k + hi_k) / 2
+                lo_k, hi_k = (k, hi_k) if 2 * side(k).sum() < gross0 else (lo_k, k)
+            e = side(hi_k)
+        else:
+            e = room                                      # caps bind everywhere
+        for s, es in zip(secs, e):
+            m = sec == s
+            for idx in (np.where(m & (t > 0))[0], np.where(m & (t < 0))[0]):
+                sgn = np.sign(t[idx[0]])
+                w = np.abs(t[idx])
+                w = w / w.sum() * es
+                c = caps[idx]
+                for _ in range(200):                      # water-fill under caps
+                    over = w > c + 1e-6
+                    if not over.any():
+                        break
+                    excess = (w[over] - c[over]).sum()
+                    w[over] = c[over]
+                    free = w < c - 1e-6
+                    if not free.any():
+                        break
+                    w[free] += excess * w[free] / w[free].sum()
+                t[idx] = sgn * w
+        net = {s: 100 * t[sec == s].sum() / nav for s in np.unique(sec[t != 0])}
+        return t, net
 
     # ---- costs -------------------------------------------------------
     def trade_cost(self, delta, g_cost):
@@ -652,6 +734,8 @@ if __name__ == "__main__":
     ap.add_argument("--nav", type=float, default=None, help="starting NAV, US$")
     ap.add_argument("--cost", default="sqrt:0.7", help="sqrt:Y | almgren | flat:BPS")
     ap.add_argument("--borrow", default="model", choices=["model", "flat"])
+    ap.add_argument("--sector-neutral", action="store_true",
+                    help="POST-HOC: equal long/short dollars per GICS sector")
     a = ap.parse_args()
     lay = None
     if a.layer:
@@ -661,13 +745,19 @@ if __name__ == "__main__":
     if a.nav:
         label = "%s_%s_nav%.0fm" % (a.window, a.freq, a.nav / 1e6)
     if a.cost != "sqrt:0.7" or a.borrow != "model":
-        label = "%s_%s_cost-%s_borrow-%s" % (a.window, a.freq, a.cost.replace(":", ""), a.borrow)
+        # keep the NAV in the label, or a capacity run overwrites the cost run
+        label = "%s_%s%s_cost-%s_borrow-%s" % (a.window, a.freq,
+                                               "_nav%.0fm" % (a.nav / 1e6) if a.nav else "",
+                                               a.cost.replace(":", ""), a.borrow)
+    if label and a.sector_neutral:
+        label += "_secneu"
     tri = None
     if a.triage:
         import f04_risk_layer as RL
         tri = RL.TriageLayer(a.triage)
     e = Engine(a.window, a.freq, a.overlay, layer=lay, label=label, start_nav=a.nav,
-               cost_mode=a.cost, borrow_mode=a.borrow, triage=tri).run()
+               cost_mode=a.cost, borrow_mode=a.borrow, triage=tri,
+               sector_neutral=a.sector_neutral).run()
     save(e)
     if lay is not None:
         lay.write_log(e.label)

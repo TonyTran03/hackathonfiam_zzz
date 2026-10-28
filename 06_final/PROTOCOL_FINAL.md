@@ -122,3 +122,24 @@ post-hoc everywhere it appears, and is not a candidate for the headline.
 - One run per mode on 2021-01 .. 2026-08, all reported. The position-risk
   agent (pre-registered as "M+agent layer") stays a separate
   optional mode.
+
+## Amendment 3 -- sector-neutral variant, MENTOR-PROMPTED and POST-HOC (2026-10-28)
+
+Prompted by a mentor's question at the event: did 2021-22 come from stock
+selection or from the health-care-long / tech-short sector tilt? Designed after
+the test-window results were seen, so it is post-hoc and is reported NEXT TO
+the headline (`test_M`), never in place of it.
+
+- `--sector-neutral`: equal long and short dollars in every GICS sector; legs
+  are no longer sized on beta, and market beta is removed afterwards by an
+  index-futures overlay (`f11_beta_hedge.py`: 126-day trailing beta, no
+  look-ahead, 1 bp of futures notional traded).
+- A first version was run on both windows before this commit (design net IR
+  -1.79, -1.74 hedged, failing the design rule against `design_M` at -1.22;
+  test 0.38). It had a bug: it clipped names to their caps after balancing,
+  which undid the balance wherever a sector's lighter side was fully capped
+  (43 of 68 test formations had a sector above 3% of NAV net, worst 11.3%).
+- Committed here, before the fixed version is run: the fixed balancing
+  (`Engine.sector_balance`) is the version reported, whatever it shows, on
+  both windows, with and without the futures hedge. The buggy runs are not
+  reported as the variant's result. Nothing else in the engine changes.
