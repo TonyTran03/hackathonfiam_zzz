@@ -254,21 +254,80 @@ What the three cards show:
 2. **Card spend is the clearest revision risk.** It is the only one whose documentation
    says past values change. It also has no vintage column, so the series used in a
    backtest would be today's restated version, not what was available at the time.
-3. **Card spend's start date is the open question.** The catalogue gives two different
-   answers. `dd_coverage.py` on the shared panel settles it with a measured start month,
-   the first month at or above half the 2024 coverage.
+3. **Card spend's start date was the open question.** The catalogue gives two different
+   answers. The panel check below settles it: the history starts in 2019-01.
 4. **None of the three carries a CIK or date-bounded tickers.** Mapping to PERMNO has to
-   go through tickers we bound by date ourselves. `dd_coverage.py` counts rows that land
-   on stock-months not live in our panel, which is the sign of an unbounded link.
+   go through tickers we bound by date ourselves. The panel check below measures how
+   often the vendor's ticker lands on a company that was not listed that month.
+
+### Panel check: cards 5 and 6 on the shared panels
+
+Run on 2026-10-28 with `dd_coverage.py` on Faig's two panels (`PROVENANCE.md` on his
+machine: MCP `framework_to_insight`, monthly US sums, 2019-01 to 2026-08, nothing bought).
+The panels are licensed and stay out of the repo. Only our counts are recorded here, and
+the two coverage charts (`dd_coverage_card_spend.png`, `dd_coverage_foot_traffic.png`)
+show counts of names, not Carbon Arc values. Units used in this step: 0.
+
+**Mapping method.** The panels are keyed by ticker. Each (ticker, month) is matched to the
+permno that carried that ticker that month in our panel. A second pass recovers renames:
+if the permno that carries the ticker today was live that month under an earlier ticker,
+the row is matched to it. Every other row is labelled pre-listing, post-delisting or gap.
+
+| Measured on the panel | Card spend (Facteus) | Foot traffic (PassBy) |
+|---|---|---|
+| Tickers, rows, months | 117 tickers, 10,351 rows, 92 months | 100 tickers, 9,198 rows, 92 months |
+| Names with a value in every month | 105 of 117 (Faig's count confirmed) | 98 of 100 (ODP ends 2026-06; RAD has 2 missing months) |
+| Names with a value in 2019-01 / 2021-01 / 2024 average | 110 / 112 / 114 | 100 / 100 / 100 |
+| Of those, live stocks in our panel | 89 / 96 / 104 | 85 / 90 / 92 |
+| Measured start month (first month at half the 2024 level) | 2019-01, for all names and for live names | 2019-01, for all names and for live names |
+| Rows on a live stock-month | 9,234 (89.2%): 8,992 by dated ticker, 242 through an earlier ticker | 8,388 (91.2%): 8,248 and 140 |
+| Rows before listing | 596 (pre-IPO brands, e.g. KLC, SG, FWRG, LTH, DNUT) | 365 |
+| Rows after delisting | 468 (companies still operating after leaving the market, e.g. PRTY, TA, RAD, JWN, WBA) | 392 |
+| Gap or ambiguous | 52 gap (WOOF, ACI, DXLG, WW); 1 ambiguous (CZR, 2020-07 merger month) | 52 and 1, the same names |
+| Zero values / missing values | 0 / 0. Absent months are simply missing rows. | 9 / 2. The zeros are real closures (RAD after its stores closed, WYNN in 2020-04). |
+
+**The 12 short card-spend histories** (Faig's list confirmed): SAH (1 month), SPTN (2),
+POOL (10), LAD (31), CRMT (38), EVRI (81, starts 2019-11), WYNN (85), DXLG (86), RSI (87,
+starts 2019-06), LRN (88), SYY (91), VVNT (91). Most are businesses that consumers rarely
+pay by card: car dealers (SAH, LAD, CRMT), distributors (SPTN, POOL, SYY), or casino
+operators whose spend is mostly outside the US (WYNN). Their monthly values are tiny, and
+the missing months fall where a tiny series has no transactions. Four names with a full
+92 months are just as thin (BYD, CHDN, GHC, LVS, each with a median under $10,000 a month),
+so about 101 card-spend names are both complete and usable.
+
+**Breaks that point to vendor-side changes in card spend.** In the same months, foot
+traffic for the same company stays flat or rises:
+
+- **BGFV:** card spend falls 96% from 2024-03 to 2024-07, while foot traffic rises 11%.
+- **GES:** card spend falls 58% in 2024-03, while foot traffic rises 24%.
+- **UDMY:** card spend rises about 6x between 2022-10 and 2023-01. **TNL:** it rises 2.4x
+  in 2024-08. There is no foot-traffic series for either to compare with.
+- **ETSY:** card spend grows from about $500 a month in 2019-01 to $1.7 million in 2026-08.
+  That pattern is merchant coverage growing inside the panel, not the business.
+
+Together with the documented monthly reweighting, these breaks are why card spend stays
+descriptive.
+
+| Rule | Card 5: card spend, after the panel check | Card 6: foot traffic, after the panel check |
+|---|---|---|
+| 1. Publication lag | UNVERIFIED (unchanged). A single snapshot cannot show when values arrived. | UNVERIFIED (unchanged) |
+| 2. Backward revisions | **UNVERIFIED, evidence against.** Restatement is documented, there is no vintage column, and the panel shows breaks that the business did not have. | UNVERIFIED. One snapshot cannot show revisions. To test it, re-pull a few names later and compare. |
+| 3. Ticker to PERMNO | **PASS with our own date-bounded map.** 89% of rows land on a live stock-month. The other 11% belong to companies that were not listed that month, and the map drops them. | **PASS with our own map.** 91% of rows land on a live stock-month. |
+| 4. Has-data flag | **UNVERIFIED.** Card spend never reports a zero, so a missing month cannot be told apart from no coverage. | **PASS on our panel.** Zeros mark real closures, and only 2 values are missing. |
+| 5. Coverage | **PASS on our panel.** 96 live names in 2021-01, against a 2024 average of 104. | **PASS on our panel.** 90 live names in 2021-01, against 92. |
+| 6. Real start date | **PASS.** Measured start 2019-01, so the catalogue's five-and-a-half-year note does not apply to this pull. That 2019 history is today's restated version (rule 2). | **PASS.** Measured start 2019-01. |
+| Sleeve gate | **Descriptive only.** It meets the start-date rule but fails on revisions risk. | **Passes on the panel** for rules 3-6. Lag and vintage still rest on documentation. |
 
 ## What we did and did not act on
 
 - **No change to the model or the 8-K features.** This pilot does not establish that
   survivorship bias is resolved. The bias stays documented as a limitation.
 - **No asset is cleared for new features.** Nothing reached PASS.
-- **Spending sleeve:** card spend and foot traffic pass the sleeve gate on documentation
-  only. Neither feeds anything until `dd_coverage.py` has run on the shared panel. Card
-  spend's documented restatements need their own point-in-time plan.
+- **Spending sleeve:** foot traffic passes the gate on the shared panel (rules 3-6), and it is
+  the dataset the sleeve will use. Join it to permno with the date-bounded map in
+  `dd_coverage.py`, keeping only rows on a live stock-month. Card spend stays descriptive:
+  its documented restatements and the panel's level breaks need their own point-in-time
+  plan first. Lag and vintage remain documentation-only for both datasets.
 - **Done: CIKs and pre-exit 8-Ks from EDGAR for all 25 unresolved firms** (27 of 27 with
   the two hits; see "All 27 on SEC EDGAR").
 - **Next step, not done:** a Carbon Arc route keyed by CIK, so the same filings could come
