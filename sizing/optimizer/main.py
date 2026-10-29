@@ -27,7 +27,19 @@ def run(predictions=None, forecast='current_gbm_no8k', start=None, end=None, max
                     + [c for c in table if c in names]].copy()
     settings = []
     for _, config in configs.iterrows():
-        overrides = {k: v for k, v in config.items() if k in names and pd.notna(v)}
+        overrides = {}
+        for k, v in config.items():
+            if k not in names or pd.isna(v):
+                continue
+            if isinstance(v, str) and v.strip().lower() == 'none':
+                v = None
+            elif isinstance(getattr(module.SETTINGS, k), int):
+                if float(v) != int(float(v)):
+                    raise ValueError(f'{k} must be an integer.')
+                v = int(float(v))
+            else:
+                v = float(v)
+            overrides[k] = v
         setting = replace(module.SETTINGS, **overrides)
         module.validate(setting)
         stages['selection'].validate(setting)

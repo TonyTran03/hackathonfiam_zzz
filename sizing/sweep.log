@@ -1,0 +1,105 @@
+1/58 trials finished: baseline; 39s elapsed
+2/58 trials finished: gross_limit_0.75; 45s elapsed
+3/58 trials finished: gross_limit_1.0; 53s elapsed
+4/58 trials finished: gross_limit_1.25; 59s elapsed
+5/58 trials finished: gross_limit_1.5; 65s elapsed
+6/58 trials finished: gross_limit_1.75; 71s elapsed
+7/58 trials finished: annual_vol_limit_0.1; 134s elapsed
+8/58 trials finished: annual_vol_limit_0.075; 136s elapsed
+9/58 trials finished: annual_vol_limit_0.125; 136s elapsed
+10/58 trials finished: annual_vol_limit_0.05; 141s elapsed
+11/58 trials finished: position_limit_0.005; 161s elapsed
+12/58 trials finished: position_limit_0.01; 167s elapsed
+13/58 trials finished: position_limit_0.015; 185s elapsed
+14/58 trials finished: annual_vol_limit_0.2; 191s elapsed
+15/58 trials finished: position_limit_0.025; 191s elapsed
+16/58 trials finished: annual_vol_limit_0.15; 194s elapsed
+17/58 trials finished: risk_penalty_10.0; 210s elapsed
+18/58 trials finished: risk_penalty_30.0; 215s elapsed
+19/58 trials finished: risk_penalty_300.0; 216s elapsed
+20/58 trials finished: risk_penalty_1000.0; 218s elapsed
+21/58 trials finished: risk_penalty_3000.0; 234s elapsed
+22/58 trials finished: cost_penalty_10.0; 240s elapsed
+23/58 trials finished: cost_penalty_50.0; 241s elapsed
+24/58 trials finished: cost_penalty_100.0; 245s elapsed
+25/58 trials finished: cost_penalty_300.0; 270s elapsed
+26/58 trials finished: beta_limit_0.05; 275s elapsed
+FAILED sector_limit_0.0: {'month': '2021-01', 'error': 'Optimizer status: infeasible. No constraints were automatically relaxed.'}
+27/58 trials finished: sector_limit_0.0; 276s elapsed
+28/58 trials finished: beta_limit_0.1; 277s elapsed
+29/58 trials finished: beta_limit_0.2; 279s elapsed
+30/58 trials finished: beta_limit_None; 297s elapsed
+31/58 trials finished: sector_limit_0.025; 304s elapsed
+32/58 trials finished: sector_limit_0.05; 304s elapsed
+33/58 trials finished: sector_limit_0.1; 307s elapsed
+FAILED size_limit_0.0: {'month': '2023-11', 'error': 'Optimizer status: infeasible. No constraints were automatically relaxed.'}
+34/58 trials finished: size_limit_0.0; 312s elapsed
+FAILED size_limit_0.1: {'month': '2024-08', 'error': 'Optimizer status: infeasible. No constraints were automatically relaxed.'}
+35/58 trials finished: size_limit_0.1; 322s elapsed
+FAILED size_limit_0.05: {'month': '2024-08', 'error': 'Optimizer status: infeasible. No constraints were automatically relaxed.'}
+36/58 trials finished: size_limit_0.05; 323s elapsed
+37/58 trials finished: covariance_months_12; 332s elapsed
+38/58 trials finished: covariance_months_24; 337s elapsed
+39/58 trials finished: covariance_months_60; 347s elapsed
+40/58 trials finished: turnover_limit_0.75; 350s elapsed
+41/58 trials finished: turnover_limit_1.0; 360s elapsed
+FAILED mix_g1.0_p0.01_c10.0: {'month': '2022-07', 'error': 'Optimizer status: infeasible. No constraints were automatically relaxed.'}
+42/58 trials finished: mix_g1.0_p0.01_c10.0; 365s elapsed
+43/58 trials finished: turnover_limit_1.5; 368s elapsed
+FAILED mix_g1.0_p0.01_c100.0: {'month': '2022-07', 'error': 'Optimizer status: infeasible. No constraints were automatically relaxed.'}
+44/58 trials finished: mix_g1.0_p0.01_c100.0; 375s elapsed
+45/58 trials finished: turnover_limit_2.0; 377s elapsed
+FAILED mix_g1.0_p0.025_c10.0: {'month': '2023-04', 'error': 'Optimizer status: infeasible. No constraints were automatically relaxed.'}
+46/58 trials finished: mix_g1.0_p0.025_c10.0; 388s elapsed
+FAILED mix_g1.0_p0.025_c100.0: {'month': '2023-04', 'error': 'Optimizer status: infeasible. No constraints were automatically relaxed.'}
+47/58 trials finished: mix_g1.0_p0.025_c100.0; 391s elapsed
+FAILED mix_g1.5_p0.01_c10.0: {'month': '2022-07', 'error': 'Optimizer status: infeasible. No constraints were automatically relaxed.'}
+48/58 trials finished: mix_g1.5_p0.01_c10.0; 394s elapsed
+FAILED mix_g1.5_p0.01_c100.0: {'month': '2022-07', 'error': 'Optimizer status: infeasible. No constraints were automatically relaxed.'}
+49/58 trials finished: mix_g1.5_p0.01_c100.0; 395s elapsed
+FAILED mix_g2.0_p0.01_c10.0: {'month': '2022-07', 'error': 'Optimizer status: infeasible. No constraints were automatically relaxed.'}
+50/58 trials finished: mix_g2.0_p0.01_c10.0; 411s elapsed
+FAILED mix_g2.0_p0.01_c100.0: {'month': '2022-07', 'error': 'Optimizer status: infeasible. No constraints were automatically relaxed.'}
+51/58 trials finished: mix_g2.0_p0.01_c100.0; 413s elapsed
+FAILED mix_g1.5_p0.025_c10.0: {'month': '2023-04', 'error': 'Optimizer status: infeasible. No constraints were automatically relaxed.'}
+52/58 trials finished: mix_g1.5_p0.025_c10.0; 417s elapsed
+FAILED mix_g1.5_p0.025_c100.0: {'month': '2023-04', 'error': 'Optimizer status: infeasible. No constraints were automatically relaxed.'}
+53/58 trials finished: mix_g1.5_p0.025_c100.0; 420s elapsed
+54/58 trials finished: cost_stress_35.0bps; 441s elapsed
+FAILED mix_g2.0_p0.025_c10.0: {'month': '2023-04', 'error': 'Optimizer status: infeasible. No constraints were automatically relaxed.'}
+55/58 trials finished: mix_g2.0_p0.025_c10.0; 443s elapsed
+56/58 trials finished: cost_stress_50.0bps; 443s elapsed
+FAILED mix_g2.0_p0.025_c100.0: {'month': '2023-04', 'error': 'Optimizer status: infeasible. No constraints were automatically relaxed.'}
+57/58 trials finished: mix_g2.0_p0.025_c100.0; 446s elapsed
+58/58 trials finished: cost_stress_100.0bps; 465s elapsed
+1/26 trials finished: refine_r3.0_p0.015_g1.5; 44s elapsed
+2/26 trials finished: refine_r3.0_p0.015_g2.0; 49s elapsed
+3/26 trials finished: refine_r3.0_p0.025_g1.5; 54s elapsed
+4/26 trials finished: refine_r3.0_p0.025_g2.0; 58s elapsed
+5/26 trials finished: refine_r10.0_p0.015_g1.5; 69s elapsed
+6/26 trials finished: refine_r10.0_p0.015_g2.0; 73s elapsed
+7/26 trials finished: refine_r10.0_p0.025_g1.5; 78s elapsed
+8/26 trials finished: refine_r10.0_p0.025_g2.0; 82s elapsed
+9/26 trials finished: refine_r30.0_p0.015_g1.5; 93s elapsed
+10/26 trials finished: refine_r30.0_p0.015_g2.0; 97s elapsed
+11/26 trials finished: refine_r30.0_p0.025_g1.5; 103s elapsed
+12/26 trials finished: refine_r30.0_p0.025_g2.0; 107s elapsed
+13/26 trials finished: refine_r10.0_p0.015_v0.1; 163s elapsed
+14/26 trials finished: refine_r10.0_p0.015_v0.125; 163s elapsed
+15/26 trials finished: refine_r10.0_p0.015_v0.15; 165s elapsed
+16/26 trials finished: refine_r10.0_p0.025_v0.1; 181s elapsed
+17/26 trials finished: refine_r10.0_p0.025_v0.15; 258s elapsed
+Traceback (most recent call last):
+OSError: [Errno 22] Invalid argument: 'C:\\Users\\tonyt\\Documents\\hackathonfiam_zzz\\sizing\\sweep_monthly.csv'
+Resuming: 9 pending refinement trials
+1/9 trials finished: refine_r10.0_p0.025_v0.125; 109s elapsed
+2/9 trials finished: refine_r30.0_p0.015_v0.15; 110s elapsed
+3/9 trials finished: refine_r30.0_p0.015_v0.125; 113s elapsed
+4/9 trials finished: refine_r30.0_p0.015_v0.1; 116s elapsed
+FAILED refine_r30.0_p0.025_v0.125: {'month': '2021-12', 'error': "Solver 'CLARABEL' failed. Try another solver, or solve with verbose=True for more information."}
+5/9 trials finished: refine_r30.0_p0.025_v0.125; 127s elapsed
+6/9 trials finished: refine_r10.0_sector; 154s elapsed
+7/9 trials finished: refine_r30.0_sector; 167s elapsed
+8/9 trials finished: refine_r30.0_p0.025_v0.15; 219s elapsed
+9/9 trials finished: refine_r30.0_p0.025_v0.1; 223s elapsed
+VERIFIED {'successful_trials': 67, 'failed_trials': 17, 'months_per_successful_trial': 68, 'max_constraint_violation': 1.897431767261537e-08, 'baseline_reproduced': True, 'forecast_vol_limits_verified': True}

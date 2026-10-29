@@ -63,6 +63,44 @@ Set `MAX_MONTHS = 2` for an execution check; leave it `None` for the full 68 mon
 
 ## Try a new idea
 
+The optimizer now defaults to the same eligibility screen as `beta_matched`:
+price >=$5, excluding nano/micro-cap stocks, with market cap >=$500m for shorts.
+Run `python sizing/optimizer/compare_screened.py` to compare the 84 previously
+declared optimizer settings against beta-matched sizing on identical candidates.
+Use `--resume` after interruption; it verifies input/source consistency and skips
+completed or failed trials. Read `sizing/screened_comparison.md` for results and
+`screened_vs_unscreened.csv` for each setting's before/after screen comparison.
+`screened_monthly.csv`, `screened_summary.csv`, `screened_periods.csv`,
+`screened_metadata.json`, and `screened_failures.json` retain diagnostics.
+The earlier unscreened editable table is preserved in `constraint_unscreened.csv`
+and `constraint_unscreened.md`; the earlier `sweep_*` results remain unscreened.
+The screen is an eligibility proxy; liquidity/capacity at fund size is not certified.
+For the 75%-gross portfolio, `python sizing/optimizer/position_caps.py` compares
+2.5%, 2%, 1.5%, and 1% starting position caps and saves monthly weight-drift checks
+in `sizing/position_caps.md`. The tested variants are also present in the editable
+comparison CSV. The 2% variant is `g075_cap0.020`; its observed monthly closes stay
+below 5%, but daily compliance still requires daily-return data and checks.
+
+For a broad allocation comparison, run `python sizing/optimizer/sweep.py`.
+It tests 58 configurations with identical ranking and candidates: gross and volatility
+budgets, position caps, risk/cost penalties, beta/sector/size bounds, covariance
+windows, turnover limits, combined settings, and higher trading-cost assumptions.
+It refreshes `sizing/constraint.csv` and `sizing/constraint.md` after completion.
+Four worker processes evaluate independent trials. `sweep_monthly.csv` is checkpointed
+after each completed trial; `sweep_summary.csv` contains
+full-period diagnostics and `sweep_periods.csv` compares 2021–2023 with 2024 onward.
+`sweep_failures.json` records failed trials without relaxing their constraints;
+failed trials are excluded from the final comparison. `sweep_metadata.json`
+records settings and stage sources. These period comparisons are descriptive,
+not an untouched test set. Restarting the broad command reruns it from the beginning.
+After the broad pass completes, `python sizing/optimizer/sweep.py --refine`
+appends 26 combinations of lower risk penalties with position caps, gross limits,
+volatility budgets, and sector bounds. It preserves the broad-pass observations
+in the same comparison files. Repeating refinement resumes unfinished trials;
+it checks saved settings, forecast path, and stage sources before resuming.
+In editable CSV settings, blank means inherit the default; `none` explicitly
+disables an optional bound (including the estimated-beta bound).
+
 Add a row to **sizing/constraint.csv** and edit its allocation settings. Run
 **sizing/optimizer/main.py** again. To test a ranking change, edit the optimizer's
 ranking step; all rows in the CSV deliberately share the same ranking and selection.

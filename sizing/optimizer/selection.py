@@ -9,8 +9,8 @@ import pandas as pd
 N_PER_LEG = 150
 BUFFER_MULT = 2.5
 SHORT_MIN_ME_MUSD = 500.0
-MIN_PRICE = 0.0
-EXCLUDED_SIZE_GROUPS = ()
+MIN_PRICE = 5.0
+EXCLUDED_SIZE_GROUPS = ('nano', 'micro')
 
 
 def validate(settings):
