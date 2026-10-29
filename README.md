@@ -6,18 +6,18 @@ Already cloned the repo? Save/commit your own changes first, then:
 
 ```bash
 git fetch origin
-git switch --track origin/codex/simple-pipeline-handoff
+git switch --track origin/simple-pipeline-handoff
 ```
 
-If the branch already exists locally, use `git switch codex/simple-pipeline-handoff`.
+If the branch already exists locally, use `git switch simple-pipeline-handoff`.
 For a new checkout:
 
 ```bash
-git clone --branch codex/simple-pipeline-handoff https://github.com/TonyTran03/hackathonfiam_zzz.git
+git clone --branch simple-pipeline-handoff https://github.com/TonyTran03/hackathonfiam_zzz.git
 ```
 
 In VS Code, the equivalent is **Source Control → Fetch**, then select
-`origin/codex/simple-pipeline-handoff` from the branch picker.
+`origin/simple-pipeline-handoff` from the branch picker.
 
 ## One-time setup
 
