@@ -89,3 +89,16 @@ Old code and reports remain in Git history/on the original main branch. This
 branch replaces the active layout; local retired backups are not part of the clone.
 
 Each experiment numbers its runs `outputs/1`, `outputs/2`, `outputs/3`, etc. Each run includes `constraints.md` with the exact sizing rules/settings used. Existing timestamp runs are renumbered automatically when the experiment next runs.
+
+## Beta-matched inverse-volatility reference
+
+Run **sizing/beta_matched/main.py** to keep the earlier capped inverse-volatility
+portfolio as a third experiment. It uses 150 names per side, the >=$5/no-nano-or-micro
+screen, the $500m month-end short floor, 3-observation score smoothing, a 2.5x
+retention buffer, a 1.5% final cap, and long/short notionals matched on estimated
+beta. It does not use realized-beta feedback. Caps can leave a small residual
+estimated beta; realized beta is not guaranteed zero.
+
+Matching forecasts and dates appear together on the charts: **blue = beta_matched**,
+**orange = optimizer**, **purple = price_only**, green dashed = cash + 4%.
+Outputs use the same numbered folders and constraints.md records.

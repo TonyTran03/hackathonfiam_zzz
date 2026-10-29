@@ -342,12 +342,14 @@ def run_price_only(predictions=None, forecast='current_gbm_no8k', start=None, en
 
 
 def comparison_monthly(current):
-    """Overlay only an old replay with matching forecasts, dates and full-run status."""
+    """Overlay other experiments only when forecasts and evaluation dates match."""
     meta = json.loads((current / 'run.json').read_text(encoding='utf-8'))
     current_monthly = pd.read_csv(current / 'monthly_returns.csv')
     frames = [current_monthly]
-    if meta.get('experiment') != 'price_only':
-        for old_path in sorted((HERE / 'price_only/outputs').glob('*/run.json'), key=run_number, reverse=True):
+    for folder in sorted(HERE.iterdir()):
+        if not folder.is_dir() or folder.name == meta.get('experiment'):
+            continue
+        for old_path in sorted((folder / 'outputs').glob('*/run.json'), key=run_number, reverse=True):
             other = json.loads(old_path.read_text(encoding='utf-8'))
             if (other.get('status') == 'complete' and other['forecast'] == meta['forecast']
                     and other['prediction_sha256'] == meta['prediction_sha256']
@@ -383,13 +385,14 @@ def save_report(out, monthly, summary, settings):
     matplotlib.use('Agg')
     import matplotlib.pyplot as plt
     fig, axes = plt.subplots(3, 1, figsize=(11, 10), sharex=True)
+    colors = {'beta_matched': 'tab:blue', 'optimizer': 'tab:orange', 'price_only': 'tab:purple'}
     for method, m in monthly.groupby('method', sort=False):
         dates = pd.to_datetime(m.target_month)
-        axes[0].plot(dates, (1 + m.total_net).cumprod(), label=method)
-        axes[1].plot(dates, m.market_beta, label=method)
-        axes[2].plot(dates, m.turnover, label=method)
+        axes[0].plot(dates, (1 + m.total_net).cumprod(), label=method, color=colors.get(method))
+        axes[1].plot(dates, m.market_beta, label=method, color=colors.get(method))
+        axes[2].plot(dates, m.turnover, label=method, color=colors.get(method))
     m = monthly[monthly.method == monthly.method.iloc[0]]
-    axes[0].plot(pd.to_datetime(m.target_month), (1 + m.hurdle).cumprod(), '--', label='cash + 4% hurdle')
+    axes[0].plot(pd.to_datetime(m.target_month), (1 + m.hurdle).cumprod(), '--', color='tab:green', label='cash + 4% hurdle')
     for ax, label in zip(axes, ['Wealth after trading costs', 'Estimated market beta', 'Buys + sells / NAV']):
         ax.set_ylabel(label)
         ax.grid(alpha=.2)
@@ -484,13 +487,26 @@ def run(experiment='optimizer', predictions=None, forecast='current_gbm_no8k',
             covariance, audit = covariance_for(history, month, g, settings)
             cov_audit.append({'target_month': month, **audit})
             inputs = sizing_inputs(g, previous, settings)
-            optimized, month_checks, status = solve_weights(
-                g, covariance, inputs, settings, module.build_constraints, module.build_objective)
+            if hasattr(module, 'size_positions'):
+                optimized = module.size_positions(g, settings)
+                if not optimized.index.equals(g.index) or not np.isfinite(optimized).all():
+                    raise ValueError('Sizing rule returned invalid or misaligned weights.')
+                variable = cp.Variable(len(g), value=optimized.to_numpy())
+                month_checks = []
+                for name, rule in module.build_constraints(variable, inputs, settings).items():
+                    violation = float(np.max(rule.violation()))
+                    if violation > settings.numerical_tolerance:
+                        raise ValueError(f'{name}: rule-based weights violate constraint by {violation:g}.')
+                    month_checks.append(dict(constraint=name, max_violation=violation, max_abs_dual=np.nan))
+                status = 'rule_based'
+            else:
+                optimized, month_checks, status = solve_weights(
+                    g, covariance, inputs, settings, module.build_constraints, module.build_objective)
             checks.extend({'target_month': month, 'solver_status': status, **c} for c in month_checks)
             realized = history.loc[month] if month in history.index else pd.Series(dtype=float)
             row, previous, raw, sectors = account(
                 month, g, optimized, previous, realized, float(cash.loc[month]), covariance, settings)
-            row.update(method='optimizer', market_return=float(market.get(month, np.nan)),
+            row.update(method=experiment, market_return=float(market.get(month, np.nan)),
                        position_count_in_200_500=bool(200 <= row['positions'] <= 500))
             rows.append(row)
             h = g[['target_month', 'ticker', 'company_name', 'score', 'side', 'beta_use', 'sector', 'size']].copy()

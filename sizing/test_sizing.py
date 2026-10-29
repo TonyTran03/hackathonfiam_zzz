@@ -25,6 +25,22 @@ def fixture():
 
 
 class SizingTests(unittest.TestCase):
+    def test_beta_matched_reference_caps_and_beta_balance(self):
+        stages = load_stages('beta_matched')
+        settings = stages['constraints'].SETTINGS
+        g = fixture()
+        weights = stages['constraints'].size_positions(g, settings)
+        self.assertLessEqual(weights.abs().max(), settings.position_limit + 1e-12)
+        self.assertLessEqual(weights.abs().sum(), settings.gross_limit + 1e-12)
+        self.assertAlmostEqual(float(weights @ g.beta_use), 0., places=10)
+
+    def test_inverse_vol_reference_redistributes_capped_weights(self):
+        sizing = load_stages('beta_matched')['constraints']
+        weights = sizing.capped_inverse_vol(np.array([.001, .1, .1]), .03, .015)
+        self.assertAlmostEqual(weights.sum(), .03)
+        self.assertLessEqual(weights.max(), .015 + 1e-12)
+        self.assertGreater(weights[0], weights[1])
+
     def test_numbered_runs_and_historical_migration(self):
         with tempfile.TemporaryDirectory() as directory:
             parent = Path(directory)
