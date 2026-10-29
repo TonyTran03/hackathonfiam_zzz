@@ -197,10 +197,13 @@ def sizing_inputs(g, previous, settings, nav=1e9):
 def solve_weights(g, covariance, inputs, settings, constraint_builder=build_constraints,
                   objective_builder=build_objective):
     w = cp.Variable(len(g))
+    # Upstream: make the covariance reachable from `inputs`.
+    inputs = dict(inputs, covariance=covariance)
     args = (w, g.score.to_numpy(), covariance, inputs['previous'],
             inputs['forced_exit_turnover'], settings)
     # An objective that declares a 7th parameter also receives `inputs`, which
-    # carries the sector matrix. Older six-argument objectives are unaffected.
+    # carries the sector matrix and the covariance. Older six-argument
+    # objectives are called exactly as before.
     wants_inputs = len(inspect.signature(objective_builder).parameters) >= 7
     objective = objective_builder(*args, inputs) if wants_inputs else objective_builder(*args)
     rules = constraint_builder(w, inputs, settings)
