@@ -1,0 +1,70 @@
+{
+  "sector_limit_0.0": {
+    "month": "2021-01",
+    "error": "Optimizer status: infeasible. No constraints were automatically relaxed."
+  },
+  "size_limit_0.0": {
+    "month": "2023-11",
+    "error": "Optimizer status: infeasible. No constraints were automatically relaxed."
+  },
+  "size_limit_0.1": {
+    "month": "2024-08",
+    "error": "Optimizer status: infeasible. No constraints were automatically relaxed."
+  },
+  "size_limit_0.05": {
+    "month": "2024-08",
+    "error": "Optimizer status: infeasible. No constraints were automatically relaxed."
+  },
+  "mix_g1.0_p0.01_c10.0": {
+    "month": "2022-07",
+    "error": "Optimizer status: infeasible. No constraints were automatically relaxed."
+  },
+  "mix_g1.0_p0.01_c100.0": {
+    "month": "2022-07",
+    "error": "Optimizer status: infeasible. No constraints were automatically relaxed."
+  },
+  "mix_g1.0_p0.025_c10.0": {
+    "month": "2023-04",
+    "error": "Optimizer status: infeasible. No constraints were automatically relaxed."
+  },
+  "mix_g1.0_p0.025_c100.0": {
+    "month": "2023-04",
+    "error": "Optimizer status: infeasible. No constraints were automatically relaxed."
+  },
+  "mix_g1.5_p0.01_c10.0": {
+    "month": "2022-07",
+    "error": "Optimizer status: infeasible. No constraints were automatically relaxed."
+  },
+  "mix_g1.5_p0.01_c100.0": {
+    "month": "2022-07",
+    "error": "Optimizer status: infeasible. No constraints were automatically relaxed."
+  },
+  "mix_g2.0_p0.01_c10.0": {
+    "month": "2022-07",
+    "error": "Optimizer status: infeasible. No constraints were automatically relaxed."
+  },
+  "mix_g2.0_p0.01_c100.0": {
+    "month": "2022-07",
+    "error": "Optimizer status: infeasible. No constraints were automatically relaxed."
+  },
+  "mix_g1.5_p0.025_c10.0": {
+    "month": "2023-04",
+    "error": "Optimizer status: infeasible. No constraints were automatically relaxed."
+  },
+  "mix_g1.5_p0.025_c100.0": {
+    "month": "2023-04",
+    "error": "Optimizer status: infeasible. No constraints were automatically relaxed."
+  },
+  "mix_g2.0_p0.025_c10.0": {
+    "month": "2023-04",
+    "error": "Optimizer status: infeasible. No constraints were automatically relaxed."
+  },
+  "mix_g2.0_p0.025_c100.0": {
+    "month": "2023-04",
+    "error": "Optimizer status: infeasible. No constraints were automatically relaxed."
+  },
+  "refine_r30.0_p0.025_v0.125": {
+    "month": "2021-12",
+    "error": "Solver 'CLARABEL' failed. Try another solver, or solve with verbose=True for more information."
+  }
+}

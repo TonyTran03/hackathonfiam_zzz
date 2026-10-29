@@ -1,7 +1,0 @@
-measure,value
-firms that later exit: share with ANY 8-K in corpus,0.1334648257725181
-surviving firms: share with ANY 8-K in corpus,0.9317988064791134
-exiting firms: monthly coverage in final 12 months,0.07512568555758684
-exiting firms: monthly coverage 24+ months before exit,0.18668452480607176
-"covered minus uncovered next-month return, %/month",-0.07367182436775108
-  t-statistic (monthly),-0.9393391834542939

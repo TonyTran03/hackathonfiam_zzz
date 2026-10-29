@@ -1,0 +1,10 @@
+g075_cap0.025: all 68 months complete
+g075_cap0.020: all 68 months complete
+g075_cap0.015: all 68 months complete
+g075_cap0.010: all 68 months complete
+        trial     cagr  annual_vol  information_ratio  realized_market_beta  max_drawdown  max_monthend_weight  months_over_5pct
+g075_cap0.010 0.121627    0.069920           0.634199             -0.088220     -0.071262             0.042613                 0
+g075_cap0.015 0.155380    0.076470           0.975154             -0.103990     -0.070187             0.032381                 0
+g075_cap0.020 0.170245    0.078899           1.109170             -0.113489     -0.073567             0.042802                 0
+g075_cap0.025 0.177436    0.083134           1.127572             -0.119834     -0.088990             0.054089                 3
+VERIFIED {'successful_trials': 4, 'months_per_trial': 68, 'eligibility_verified': True, 'formation_caps_verified': True, 'max_constraint_violation': 2.2298993762603914e-09, 'daily_compliance_verified': False}

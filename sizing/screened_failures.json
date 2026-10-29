@@ -1,0 +1,10 @@
+{
+  "sector_limit_0.0": {
+    "month": "2021-01",
+    "error": "Optimizer status: infeasible. No constraints were automatically relaxed."
+  },
+  "turnover_limit_0.75": {
+    "month": "2024-03",
+    "error": "Optimizer status: infeasible. No constraints were automatically relaxed."
+  }
+}

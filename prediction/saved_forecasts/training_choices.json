@@ -1,0 +1,518 @@
+[
+  {
+    "year": 2021,
+    "variant": "current_gbm_no8k",
+    "prediction_offset": 0.002691497221254099,
+    "selected": {
+      "config": {
+        "num_leaves": 63,
+        "min_child_samples": 100,
+        "learning_rate": 0.01
+      },
+      "validation_training_objective_mse": 0.027233647748325217,
+      "best_iteration": 57
+    },
+    "trials": [
+      {
+        "config": {
+          "num_leaves": 15,
+          "min_child_samples": 500,
+          "learning_rate": 0.02
+        },
+        "validation_training_objective_mse": 0.027248156973181024,
+        "best_iteration": 29
+      },
+      {
+        "config": {
+          "num_leaves": 31,
+          "min_child_samples": 200,
+          "learning_rate": 0.02
+        },
+        "validation_training_objective_mse": 0.027241730202344414,
+        "best_iteration": 18
+      },
+      {
+        "config": {
+          "num_leaves": 63,
+          "min_child_samples": 100,
+          "learning_rate": 0.01
+        },
+        "validation_training_objective_mse": 0.027233647748325217,
+        "best_iteration": 57
+      }
+    ]
+  },
+  {
+    "year": 2021,
+    "variant": "raw_return_gbm_no8k",
+    "prediction_offset": 0.0,
+    "selected": {
+      "config": {
+        "num_leaves": 63,
+        "min_child_samples": 100,
+        "learning_rate": 0.01
+      },
+      "validation_training_objective_mse": 0.06019260958485132,
+      "best_iteration": 1
+    },
+    "trials": [
+      {
+        "config": {
+          "num_leaves": 15,
+          "min_child_samples": 500,
+          "learning_rate": 0.02
+        },
+        "validation_training_objective_mse": 0.06019564471817862,
+        "best_iteration": 1
+      },
+      {
+        "config": {
+          "num_leaves": 31,
+          "min_child_samples": 200,
+          "learning_rate": 0.02
+        },
+        "validation_training_objective_mse": 0.0601952048709893,
+        "best_iteration": 1
+      },
+      {
+        "config": {
+          "num_leaves": 63,
+          "min_child_samples": 100,
+          "learning_rate": 0.01
+        },
+        "validation_training_objective_mse": 0.06019260958485132,
+        "best_iteration": 1
+      }
+    ]
+  },
+  {
+    "year": 2022,
+    "variant": "current_gbm_no8k",
+    "prediction_offset": 0.005605585876703857,
+    "selected": {
+      "config": {
+        "num_leaves": 63,
+        "min_child_samples": 100,
+        "learning_rate": 0.01
+      },
+      "validation_training_objective_mse": 0.02707144234833025,
+      "best_iteration": 71
+    },
+    "trials": [
+      {
+        "config": {
+          "num_leaves": 15,
+          "min_child_samples": 500,
+          "learning_rate": 0.02
+        },
+        "validation_training_objective_mse": 0.02707573233318349,
+        "best_iteration": 28
+      },
+      {
+        "config": {
+          "num_leaves": 31,
+          "min_child_samples": 200,
+          "learning_rate": 0.02
+        },
+        "validation_training_objective_mse": 0.027074051889475606,
+        "best_iteration": 28
+      },
+      {
+        "config": {
+          "num_leaves": 63,
+          "min_child_samples": 100,
+          "learning_rate": 0.01
+        },
+        "validation_training_objective_mse": 0.02707144234833025,
+        "best_iteration": 71
+      }
+    ]
+  },
+  {
+    "year": 2022,
+    "variant": "raw_return_gbm_no8k",
+    "prediction_offset": 0.0,
+    "selected": {
+      "config": {
+        "num_leaves": 15,
+        "min_child_samples": 500,
+        "learning_rate": 0.02
+      },
+      "validation_training_objective_mse": 0.06469655269646683,
+      "best_iteration": 9
+    },
+    "trials": [
+      {
+        "config": {
+          "num_leaves": 15,
+          "min_child_samples": 500,
+          "learning_rate": 0.02
+        },
+        "validation_training_objective_mse": 0.06469655269646683,
+        "best_iteration": 9
+      },
+      {
+        "config": {
+          "num_leaves": 31,
+          "min_child_samples": 200,
+          "learning_rate": 0.02
+        },
+        "validation_training_objective_mse": 0.0646975232326623,
+        "best_iteration": 9
+      },
+      {
+        "config": {
+          "num_leaves": 63,
+          "min_child_samples": 100,
+          "learning_rate": 0.01
+        },
+        "validation_training_objective_mse": 0.0647194638808489,
+        "best_iteration": 9
+      }
+    ]
+  },
+  {
+    "year": 2023,
+    "variant": "current_gbm_no8k",
+    "prediction_offset": 0.010219077621544705,
+    "selected": {
+      "config": {
+        "num_leaves": 31,
+        "min_child_samples": 200,
+        "learning_rate": 0.02
+      },
+      "validation_training_objective_mse": 0.023065244677510633,
+      "best_iteration": 166
+    },
+    "trials": [
+      {
+        "config": {
+          "num_leaves": 15,
+          "min_child_samples": 500,
+          "learning_rate": 0.02
+        },
+        "validation_training_objective_mse": 0.02307057296087595,
+        "best_iteration": 171
+      },
+      {
+        "config": {
+          "num_leaves": 31,
+          "min_child_samples": 200,
+          "learning_rate": 0.02
+        },
+        "validation_training_objective_mse": 0.023065244677510633,
+        "best_iteration": 166
+      },
+      {
+        "config": {
+          "num_leaves": 63,
+          "min_child_samples": 100,
+          "learning_rate": 0.01
+        },
+        "validation_training_objective_mse": 0.023074756643247245,
+        "best_iteration": 226
+      }
+    ]
+  },
+  {
+    "year": 2023,
+    "variant": "raw_return_gbm_no8k",
+    "prediction_offset": 0.0,
+    "selected": {
+      "config": {
+        "num_leaves": 31,
+        "min_child_samples": 200,
+        "learning_rate": 0.02
+      },
+      "validation_training_objective_mse": 0.04784654649858261,
+      "best_iteration": 124
+    },
+    "trials": [
+      {
+        "config": {
+          "num_leaves": 15,
+          "min_child_samples": 500,
+          "learning_rate": 0.02
+        },
+        "validation_training_objective_mse": 0.04784976310525466,
+        "best_iteration": 98
+      },
+      {
+        "config": {
+          "num_leaves": 31,
+          "min_child_samples": 200,
+          "learning_rate": 0.02
+        },
+        "validation_training_objective_mse": 0.04784654649858261,
+        "best_iteration": 124
+      },
+      {
+        "config": {
+          "num_leaves": 63,
+          "min_child_samples": 100,
+          "learning_rate": 0.01
+        },
+        "validation_training_objective_mse": 0.04787369585052814,
+        "best_iteration": 171
+      }
+    ]
+  },
+  {
+    "year": 2024,
+    "variant": "current_gbm_no8k",
+    "prediction_offset": 0.010617107369887217,
+    "selected": {
+      "config": {
+        "num_leaves": 31,
+        "min_child_samples": 200,
+        "learning_rate": 0.02
+      },
+      "validation_training_objective_mse": 0.0273898864540971,
+      "best_iteration": 505
+    },
+    "trials": [
+      {
+        "config": {
+          "num_leaves": 15,
+          "min_child_samples": 500,
+          "learning_rate": 0.02
+        },
+        "validation_training_objective_mse": 0.02739380227408578,
+        "best_iteration": 523
+      },
+      {
+        "config": {
+          "num_leaves": 31,
+          "min_child_samples": 200,
+          "learning_rate": 0.02
+        },
+        "validation_training_objective_mse": 0.0273898864540971,
+        "best_iteration": 505
+      },
+      {
+        "config": {
+          "num_leaves": 63,
+          "min_child_samples": 100,
+          "learning_rate": 0.01
+        },
+        "validation_training_objective_mse": 0.027402460363707883,
+        "best_iteration": 477
+      }
+    ]
+  },
+  {
+    "year": 2024,
+    "variant": "raw_return_gbm_no8k",
+    "prediction_offset": 0.0,
+    "selected": {
+      "config": {
+        "num_leaves": 15,
+        "min_child_samples": 500,
+        "learning_rate": 0.02
+      },
+      "validation_training_objective_mse": 0.05055434216495424,
+      "best_iteration": 214
+    },
+    "trials": [
+      {
+        "config": {
+          "num_leaves": 15,
+          "min_child_samples": 500,
+          "learning_rate": 0.02
+        },
+        "validation_training_objective_mse": 0.05055434216495424,
+        "best_iteration": 214
+      },
+      {
+        "config": {
+          "num_leaves": 31,
+          "min_child_samples": 200,
+          "learning_rate": 0.02
+        },
+        "validation_training_objective_mse": 0.050597612465478975,
+        "best_iteration": 191
+      },
+      {
+        "config": {
+          "num_leaves": 63,
+          "min_child_samples": 100,
+          "learning_rate": 0.01
+        },
+        "validation_training_objective_mse": 0.050661989176742035,
+        "best_iteration": 192
+      }
+    ]
+  },
+  {
+    "year": 2025,
+    "variant": "current_gbm_no8k",
+    "prediction_offset": 0.00510931769835113,
+    "selected": {
+      "config": {
+        "num_leaves": 15,
+        "min_child_samples": 500,
+        "learning_rate": 0.02
+      },
+      "validation_training_objective_mse": 0.03419664167082684,
+      "best_iteration": 299
+    },
+    "trials": [
+      {
+        "config": {
+          "num_leaves": 15,
+          "min_child_samples": 500,
+          "learning_rate": 0.02
+        },
+        "validation_training_objective_mse": 0.03419664167082684,
+        "best_iteration": 299
+      },
+      {
+        "config": {
+          "num_leaves": 31,
+          "min_child_samples": 200,
+          "learning_rate": 0.02
+        },
+        "validation_training_objective_mse": 0.03420076295446517,
+        "best_iteration": 309
+      },
+      {
+        "config": {
+          "num_leaves": 63,
+          "min_child_samples": 100,
+          "learning_rate": 0.01
+        },
+        "validation_training_objective_mse": 0.03422993563508912,
+        "best_iteration": 427
+      }
+    ]
+  },
+  {
+    "year": 2025,
+    "variant": "raw_return_gbm_no8k",
+    "prediction_offset": 0.0,
+    "selected": {
+      "config": {
+        "num_leaves": 15,
+        "min_child_samples": 500,
+        "learning_rate": 0.02
+      },
+      "validation_training_objective_mse": 0.07951548970794502,
+      "best_iteration": 224
+    },
+    "trials": [
+      {
+        "config": {
+          "num_leaves": 15,
+          "min_child_samples": 500,
+          "learning_rate": 0.02
+        },
+        "validation_training_objective_mse": 0.07951548970794502,
+        "best_iteration": 224
+      },
+      {
+        "config": {
+          "num_leaves": 31,
+          "min_child_samples": 200,
+          "learning_rate": 0.02
+        },
+        "validation_training_objective_mse": 0.07959372493338596,
+        "best_iteration": 65
+      },
+      {
+        "config": {
+          "num_leaves": 63,
+          "min_child_samples": 100,
+          "learning_rate": 0.01
+        },
+        "validation_training_objective_mse": 0.0795905091127542,
+        "best_iteration": 55
+      }
+    ]
+  },
+  {
+    "year": 2026,
+    "variant": "current_gbm_no8k",
+    "prediction_offset": 0.005060943802139804,
+    "selected": {
+      "config": {
+        "num_leaves": 31,
+        "min_child_samples": 200,
+        "learning_rate": 0.02
+      },
+      "validation_training_objective_mse": 0.035921795305444294,
+      "best_iteration": 416
+    },
+    "trials": [
+      {
+        "config": {
+          "num_leaves": 15,
+          "min_child_samples": 500,
+          "learning_rate": 0.02
+        },
+        "validation_training_objective_mse": 0.03594679752278699,
+        "best_iteration": 477
+      },
+      {
+        "config": {
+          "num_leaves": 31,
+          "min_child_samples": 200,
+          "learning_rate": 0.02
+        },
+        "validation_training_objective_mse": 0.035921795305444294,
+        "best_iteration": 416
+      },
+      {
+        "config": {
+          "num_leaves": 63,
+          "min_child_samples": 100,
+          "learning_rate": 0.01
+        },
+        "validation_training_objective_mse": 0.03592920526025547,
+        "best_iteration": 568
+      }
+    ]
+  },
+  {
+    "year": 2026,
+    "variant": "raw_return_gbm_no8k",
+    "prediction_offset": 0.0,
+    "selected": {
+      "config": {
+        "num_leaves": 15,
+        "min_child_samples": 500,
+        "learning_rate": 0.02
+      },
+      "validation_training_objective_mse": 0.09304503629731618,
+      "best_iteration": 299
+    },
+    "trials": [
+      {
+        "config": {
+          "num_leaves": 15,
+          "min_child_samples": 500,
+          "learning_rate": 0.02
+        },
+        "validation_training_objective_mse": 0.09304503629731618,
+        "best_iteration": 299
+      },
+      {
+        "config": {
+          "num_leaves": 31,
+          "min_child_samples": 200,
+          "learning_rate": 0.02
+        },
+        "validation_training_objective_mse": 0.09308980923543757,
+        "best_iteration": 205
+      },
+      {
+        "config": {
+          "num_leaves": 63,
+          "min_child_samples": 100,
+          "learning_rate": 0.01
+        },
+        "validation_training_objective_mse": 0.09310310047013606,
+        "best_iteration": 258
+      }
+    ]
+  }
+]
