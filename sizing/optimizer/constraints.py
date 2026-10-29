@@ -24,6 +24,7 @@ class Settings:
     sector_limit: float | None = None
     size_limit: float | None = None
     turnover_limit: float | None = None
+    annual_vol_limit: float | None = None  # Monthly covariance, annualized with sqrt(12).
 
     # Starting values, NOT validated parameters. Scores are not return forecasts.
     # Score reward and penalties are in score units; tune on a design period.
@@ -82,6 +83,9 @@ def build_constraints(w, inputs, settings=SETTINGS):
             cp.norm1(w - inputs['previous']) + inputs['forced_exit_turnover']
             <= settings.turnover_limit
         )
+    if settings.annual_vol_limit is not None:
+        rules['portfolio_variance'] = cp.quad_form(
+            w, cp.psd_wrap(inputs['covariance'])) <= settings.annual_vol_limit ** 2 / 12
     return rules
 
 
@@ -95,7 +99,7 @@ def validate(settings):
     if not 1e-6 < settings.minimum_position_weight <= settings.position_limit:
         raise ValueError('Selected names require a positive allocation above numerical dust.')
     for key in ('beta_limit', 'sector_limit', 'size_limit', 'turnover_limit',
-                'risk_penalty', 'cost_penalty', 'trading_cost_bps'):
+                'risk_penalty', 'cost_penalty', 'trading_cost_bps', 'annual_vol_limit'):
         val = getattr(settings, key)
         if val is not None and (not np.isfinite(val) or val < 0):
             raise ValueError(f'{key} must be finite and nonnegative, or None for optional bounds.')

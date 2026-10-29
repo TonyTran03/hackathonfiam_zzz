@@ -192,6 +192,7 @@ def sizing_inputs(g, previous, settings):
 def solve_weights(g, covariance, inputs, settings, constraint_builder=build_constraints,
                   objective_builder=build_objective):
     w = cp.Variable(len(g))
+    inputs = dict(inputs, covariance=covariance)
     objective = objective_builder(w, g.score.to_numpy(), covariance, inputs['previous'],
                                   inputs['forced_exit_turnover'], settings)
     rules = constraint_builder(w, inputs, settings)

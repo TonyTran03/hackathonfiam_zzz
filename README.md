@@ -45,18 +45,31 @@ The feature list and market benchmark snapshots are included too.
    | `constraints.py` | Allocation objective and weight/exposure limits |
 
 3. Open **main.py in that folder** and click your editor's **Run Python File** button.
-4. Open **outputs → 1, 2, 3… → report.html** in that folder.
+4. For the optimizer, open **sizing/constraint.md** for the comparison table.
+   Edit **sizing/constraint.csv** to change trials. Each row is a trial; columns named
+   after `Settings` fields override the defaults in `optimizer/constraints.py`.
+   Blank cells inherit those defaults. Keep `trial` names unique. Other columns are
+   refreshed results. Initial trials compare baseline, a 15% estimated annual
+   volatility ceiling, and a 150% gross ceiling, with identical ranking/candidates.
 
-Run each experiment's own `main.py` separately. `sizing/comparison.csv` lists
+The optimizer refreshes only `constraint.csv` and `constraint.md` in place.
+The table shows what changed, annual volatility, IR, realized beta, maximum
+drawdown, net CAGR and average monthly one-way turnover.
+It creates no trial or numbered run folders. Existing historical outputs are preserved.
+The price-only runner still uses its existing numbered reports. `sizing/comparison.csv` lists
 the latest successful run per experiment, forecast and time window. Compare
 identical forecasts and dates. There is no root runner.
 Set `MAX_MONTHS = 2` for an execution check; leave it `None` for the full 68 months.
 
 ## Try a new idea
 
-Copy only the five Python files from `sizing/optimizer/` into a new folder under
-`sizing/` — **not outputs or __pycache__**. Edit its step files and run its main.py.
-It detects its folder name automatically. Its results join `sizing/comparison.csv`.
+Add a row to **sizing/constraint.csv** and edit its allocation settings. Run
+**sizing/optimizer/main.py** again. To test a ranking change, edit the optimizer's
+ranking step; all rows in the CSV deliberately share the same ranking and selection.
+`annual_vol_limit` is a decimal annual volatility budget (0.15 = 15%), using
+monthly covariance and variance <= annual_vol_limit squared / 12. Realized
+volatility may exceed this forecast budget. Infeasible trials stop with their
+name and month; constraints are never automatically relaxed.
 
 ## Change prediction models
 
@@ -88,7 +101,7 @@ turnover is half buys plus sells. See **Final challenge instructions.pdf**.
 Old code and reports remain in Git history/on the original main branch. This
 branch replaces the active layout; local retired backups are not part of the clone.
 
-Each experiment numbers its runs `outputs/1`, `outputs/2`, `outputs/3`, etc. Each run includes `constraints.md` with the exact sizing rules/settings used. Existing timestamp runs are renumbered automatically when the experiment next runs.
+The reference runners retain numbered `outputs` folders. Optimizer constraint trials use the shared CSV and refresh their comparison files in place.
 
 ## Beta-matched inverse-volatility reference
 
