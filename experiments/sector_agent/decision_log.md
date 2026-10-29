@@ -1,0 +1,11 @@
+- 2026-10-29 11:46: run_all start: config c3_sector_2, forecast current_gbm_no8k, params {'sector_limit': 0.02}, overlay True
+- 2026-10-29 11:47: Built agent_inputs.csv (68 rows, forecast current_gbm_no8k, sha dbb9e476d1ff). Agent decisions needed before any optimizer run.
+- 2026-10-29 11:47: Agent decisions written by agent_decide.py from agent_inputs.csv only, before any optimizer run.
+- 2026-10-29 11:47: run_all start: config c3_sector_2, forecast current_gbm_no8k, params {'sector_limit': 0.02}, overlay True
+- 2026-10-29 11:48: REPRODUCTION FAILED: shape ok 0/68 months, scale ok 2/68. Stopping before the agent arm.
+- 2026-10-29 11:51: Reproduction failed with defaults (cost_penalty 1). Position-only search on 2021-02 (match_config*.csv): cost_penalty 227.5-235 puts all 299 matched positions within 1bp of holdings_final. base_config set to cost_penalty 230. Optimizer parameter only, so agent decisions are kept unchanged.
+- 2026-10-29 11:51: run_all start: config c3_sector_2, forecast current_gbm_no8k, params {'sector_limit': 0.02, 'cost_penalty': 230}, overlay True
+- 2026-10-29 11:52: REPRODUCTION FAILED: shape ok 0/68 months, scale ok 19/68. Stopping before the agent arm.
+- 2026-10-29 11:54: run_all start: config c3_sector_2, forecast current_gbm_no8k, params {'sector_limit': 0.02, 'cost_penalty': 230}, overlay True
+- 2026-10-29 11:54: Reproduction NOT exact, continuing as allow_approximate_control is set: shape ok 3/68 months (same names 68/68, max weight diff median 0.000274 max 0.001001 of gross), scale ratio 0.9756-1.0003.
+- 2026-10-29 11:55: run_all finished.

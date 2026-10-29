@@ -1,0 +1,7 @@
+- 2026-10-29 12:53:42: Factor-form check on 2021-01 candidates (300): max relative error 3.33e-16
+- 2026-10-29 12:53:42: TEST control: 2021-01 band=0.02 cap=None universe=1884 stage-a names=0 solve a=0.3s b=0.4s | names=300 gross=0.3610 net=-3.06e-08 beta=-1.92e-08 max sector net=0.0200 min |w|=0.0010 max |w|=0.0315
+- 2026-10-29 12:53:44: TEST agent: 2021-01 band=0.01 cap=1.5 universe=1884 stage-a names=0 solve a=0.3s b=0.6s | names=300 gross=0.3724 net=-5.68e-08 beta=-3.95e-08 max sector net=0.0100 min |w|=0.0010 max |w|=0.0240
+- 2026-10-29 13:05:13: Factor-form check on 2021-01 candidates (300): max relative error 3.33e-16
+- 2026-10-29 13:05:14: TEST control: INFEASIBLE [{'target_month': '2021-01', 'band': 0.02, 'cap': None, 'outcome': 'infeasible', 'detail': 'status infeasible'}]
+- 2026-10-29 13:05:15: TEST agent: INFEASIBLE [{'target_month': '2021-01', 'band': 0.01, 'cap': 1.5, 'outcome': 'infeasible', 'detail': 'status infeasible'}]
+- 2026-10-29 13:06: STOPPED before full run. With alpha = score: control infeasible in 2021-01 at stage (b) (2% band; feasible at 5%). S = {forecast<0, me>=500m} has <150 names in 56/68 months (median 75, min 5). Diagnostic only: a score-sign split gives S >= 876 every month and a feasible control in 6/6 test months. Awaiting user decision.
