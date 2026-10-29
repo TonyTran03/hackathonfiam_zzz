@@ -45,7 +45,7 @@ The feature list and market benchmark snapshots are included too.
    | `constraints.py` | Allocation objective and weight/exposure limits |
 
 3. Open **main.py in that folder** and click your editor's **Run Python File** button.
-4. Open **outputs → run timestamp → report.html** in that folder.
+4. Open **outputs → 1, 2, 3… → report.html** in that folder.
 
 Run each experiment's own `main.py` separately. `sizing/comparison.csv` lists
 the latest successful run per experiment, forecast and time window. Compare
@@ -87,3 +87,5 @@ turnover is half buys plus sells. See **Final challenge instructions.pdf**.
 
 Old code and reports remain in Git history/on the original main branch. This
 branch replaces the active layout; local retired backups are not part of the clone.
+
+Each experiment numbers its runs `outputs/1`, `outputs/2`, `outputs/3`, etc. Each run includes `constraints.md` with the exact sizing rules/settings used. Existing timestamp runs are renumbered automatically when the experiment next runs.

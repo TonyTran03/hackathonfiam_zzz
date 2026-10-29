@@ -5,7 +5,6 @@ No model training, production outputs, or notebook edits occur here.
 """
 from dataclasses import asdict, replace
 import importlib.util
-from datetime import datetime, timezone
 import hashlib
 import json
 from pathlib import Path
@@ -24,6 +23,52 @@ import prediction_helpers as C
 from optimizer.constraints import build_constraints, build_objective
 
 BETA_SOURCES = ['betabab_1260d', 'betadown_252d', 'beta_60m']
+
+
+def run_number(path):
+    """Numeric order: run 10 comes after run 9, not after run 1."""
+    name = path.name if path.is_dir() else path.parent.name
+    return int(name) if name.isdigit() else -1
+
+
+def write_constraints_note(out, metadata):
+    sources = metadata.get('step_sources', {})
+    source = sources.get('constraints.py', metadata.get('constraints_source'))
+    lines = [f'# Run {out.name}: constraints', '',
+             f'Experiment: {metadata.get("experiment", out.parent.parent.name)}', '',
+             f'Forecast: `{metadata.get("forecast", "not recorded")}`', '']
+    if metadata.get('settings'):
+        lines += ['## Settings used', '', '```json', json.dumps(metadata['settings'], indent=2), '```', '']
+    if source:
+        lines += ['## Exact sizing rules used', '', '```python', source.rstrip(), '```', '']
+    else:
+        lines += ['The original constraints source was not recorded for this historical run.', '']
+    (out / 'constraints.md').write_text('\n'.join(lines), encoding='utf-8')
+
+
+def renumber_legacy_outputs(parent):
+    parent.mkdir(parents=True, exist_ok=True)
+    maximum = max((int(p.name) for p in parent.iterdir() if p.is_dir() and p.name.isdigit()), default=0)
+    for old in sorted(p for p in parent.iterdir() if p.is_dir() and not p.name.isdigit()
+                      and (p / 'run.json').is_file()):
+        maximum += 1
+        target = parent / str(maximum)
+        old.rename(target)
+    for out in parent.iterdir():
+        if out.is_dir() and out.name.isdigit() and (out / 'run.json').is_file() and not (out / 'constraints.md').exists():
+            write_constraints_note(out, json.loads((out / 'run.json').read_text(encoding='utf-8')))
+
+
+def new_run_folder(parent):
+    renumber_legacy_outputs(parent)
+    number = max((int(p.name) for p in parent.iterdir() if p.is_dir() and p.name.isdigit()), default=0) + 1
+    while True:
+        out = parent / str(number)
+        try:
+            out.mkdir()
+            return out
+        except FileExistsError:
+            number += 1
 
 
 def load_stages(experiment):
@@ -262,8 +307,9 @@ def run_price_only(predictions=None, forecast='current_gbm_no8k', start=None, en
         months = months[:max_months]
     if not months:
         raise ValueError('Empty reference window.')
-    out = HERE / 'price_only/outputs' / datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
-    out.mkdir(parents=True)
+    out = new_run_folder(HERE / 'price_only/outputs')
+    write_constraints_note(out, dict(experiment='price_only', forecast=forecast,
+                                    step_sources={'constraints.py': (HERE / 'price_only/constraints.py').read_text(encoding='utf-8')}))
     previous = pd.Series(dtype=float)
     selected = dict(selection.candidate_schedule(scores, SETTINGS))
     rows, held = [], []
@@ -301,7 +347,7 @@ def comparison_monthly(current):
     current_monthly = pd.read_csv(current / 'monthly_returns.csv')
     frames = [current_monthly]
     if meta.get('experiment') != 'price_only':
-        for old_path in sorted((HERE / 'price_only/outputs').glob('*/run.json'), reverse=True):
+        for old_path in sorted((HERE / 'price_only/outputs').glob('*/run.json'), key=run_number, reverse=True):
             other = json.loads(old_path.read_text(encoding='utf-8'))
             if (other.get('status') == 'complete' and other['forecast'] == meta['forecast']
                     and other['prediction_sha256'] == meta['prediction_sha256']
@@ -313,7 +359,7 @@ def comparison_monthly(current):
 
 def update_comparison(out):
     frames = []
-    for path in sorted(HERE.glob('*/outputs/*/summary.csv')):
+    for path in sorted(HERE.glob('*/outputs/*/summary.csv'), key=run_number):
         meta = json.loads((path.parent / 'run.json').read_text(encoding='utf-8'))
         if meta.get('status') != 'complete':
             continue
@@ -395,8 +441,7 @@ def run(experiment='optimizer', predictions=None, forecast='current_gbm_no8k',
         if value is not None:
             pd.Period(value, freq='M')
     prediction_path = resolve_predictions(predictions)
-    out = folder / 'outputs' / datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
-    out.mkdir(parents=True, exist_ok=False)
+    out = new_run_folder(folder / 'outputs')
     manifest = {'status': 'running', 'experiment': experiment,
                 'predictions': str(prediction_path), 'forecast': forecast,
                 'settings': asdict(settings),
@@ -416,6 +461,7 @@ def run(experiment='optimizer', predictions=None, forecast='current_gbm_no8k',
     def write_manifest():
         (out / 'run.json').write_text(json.dumps(manifest, indent=2), encoding='utf-8')
     write_manifest()
+    write_constraints_note(out, manifest)
     print(f'Experiment: {experiment}\nForecasts: {prediction_path}\nResults: {out}', flush=True)
     rows, holdings, checks, cov_audit, sector_rows = [], [], [], [], []
     try:

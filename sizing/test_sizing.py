@@ -3,6 +3,8 @@ from dataclasses import replace
 from pathlib import Path
 import sys
 import unittest
+import tempfile
+import json
 
 import numpy as np
 import pandas as pd
@@ -11,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import cvxpy as cp
 from optimizer.constraints import SETTINGS, build_constraints
 from _engine import account, covariance_for, sizing_inputs, solve_weights, summarize, load_stages
+from _engine import new_run_folder, run_number, write_constraints_note
 
 
 def fixture():
@@ -22,6 +25,27 @@ def fixture():
 
 
 class SizingTests(unittest.TestCase):
+    def test_numbered_runs_and_historical_migration(self):
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory)
+            old = parent / '20261028T120000Z'
+            old.mkdir()
+            (old / 'run.json').write_text(json.dumps({'constraints_source': 'LIMIT = 0.1'}))
+            self.assertEqual(new_run_folder(parent).name, '2')
+            self.assertIn('LIMIT = 0.1', (parent / '1/constraints.md').read_text())
+            (parent / '10').mkdir()
+            self.assertEqual(new_run_folder(parent).name, '11')
+            self.assertEqual(sorted([parent / '10', parent / '2'], key=run_number)[-1].name, '10')
+
+    def test_constraints_note_uses_recorded_source(self):
+        with tempfile.TemporaryDirectory() as directory:
+            out = Path(directory)
+            write_constraints_note(out, {'settings': {'beta_limit': 0.1},
+                                        'step_sources': {'constraints.py': 'EXACT_RULE = 123'}})
+            note = (out / 'constraints.md').read_text()
+            self.assertIn('EXACT_RULE = 123', note)
+            self.assertIn('"beta_limit": 0.1', note)
+
     def test_editable_ranking_can_use_an_added_feature(self):
         stages = load_stages('optimizer')
         rng = np.random.default_rng(17)
