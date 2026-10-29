@@ -47,23 +47,21 @@ The feature list and market benchmark snapshots are included too.
 3. Open **main.py in that folder** and click your editor's **Run Python File** button.
 4. Open **outputs → run timestamp → report.html** in that folder.
 
-To run both experiments and compare them, use **root main.py** instead. Settings
-are ordinary variables at its top. The final printed table compares exactly
-those runs. `sizing/comparison.csv` also lists the latest successful run per
-experiment, forecast and time window. Compare identical forecasts and dates.
+Run each experiment's own `main.py` separately. `sizing/comparison.csv` lists
+the latest successful run per experiment, forecast and time window. Compare
+identical forecasts and dates. There is no root runner.
 Set `MAX_MONTHS = 2` for an execution check; leave it `None` for the full 68 months.
 
 ## Try a new idea
 
 Copy only the five Python files from `sizing/optimizer/` into a new folder under
 `sizing/` — **not outputs or __pycache__**. Edit its step files and run its main.py.
-It detects its folder name automatically. To compare it from root main.py, add
-that name to `EXPERIMENTS`.
+It detects its folder name automatically. Its results join `sizing/comparison.csv`.
 
 ## Change prediction models
 
-Edit **prediction/predict.py**. Set `RETRAIN_PREDICTIONS = True` in root main.py
-and run it. Otherwise the runner reuses the latest completed full training export,
+Edit **prediction/predict.py** and run that file directly with the editor's Run button.
+Then run your experiment's `main.py`. The experiment reuses the latest completed full training export,
 or the included saved forecasts on a fresh checkout. `FORECAST` chooses the
 output column. Each experiment in one run uses the same pinned forecast file.
 `FEATURES.md` specifies future Carbon Arc inputs; they are not active or required.

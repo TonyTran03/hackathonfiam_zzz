@@ -1,4 +1,4 @@
-"""Prediction model training. Run directly, or set RETRAIN_PREDICTIONS=True in root main.py."""
+"""Prediction model training. Run this file directly, then run your experiment's main.py."""
 import os
 os.environ.setdefault('MPLBACKEND','Agg')
 
