@@ -125,6 +125,10 @@ def main():
     m = pd.DataFrame({"winners_value": vw, "losers_value": vl}).resample("ME").last()
     m["pair_equal_dollar_cum"] = m.winners_value - m.losers_value
     m.to_csv(args.output / "pair_path_month_end.csv")
+    # For the slide: daily path against the S&P 500, and the placebo draws (both aggregates).
+    pd.DataFrame({"pair_equal_dollar_cum": vw - vl, "sp500_cum": (1 + cal.loc[start:exit_]).cumprod() - 1}) \
+        .to_csv(args.output / "pair_path_daily.csv")
+    pd.DataFrame(plac, columns=["pair_equal_dollar", "pair_beta_matched"]).to_csv(args.output / "placebo_draws.csv", index=False)
     (args.output / "result.json").write_text(json.dumps(res, indent=2, default=float))
     print(json.dumps(res, indent=2, default=float))
 

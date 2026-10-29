@@ -97,4 +97,6 @@ the end of 2022-03, fell to +5.0% at the end of 2022-05, and ended at +16.4%.
   - The result sits at the 89th percentile of same-sector random pairs, not beyond the 95th.
   - The confirmation itself was marginal and reversed for two months.
   - The foot-traffic data is today's snapshot, not point-in-time.
-- **Overlay (step 5):** not produced. Tony's score hook has not been confirmed ready.
+- **Overlay (step 5):** skipped for now and moved to next steps. A `score_overlay.csv` would be built
+  as in PROTOCOL_SLEEVE.md section 5.
+- **Slide:** `sleeve_slide.png`, built by `sleeve_slide.py` from the aggregate outputs only.
