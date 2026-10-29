@@ -68,8 +68,7 @@ output column. Each experiment in one run uses the same pinned forecast file.
 
 ## Verification
 
-The checks live in **sizing/test_sizing.py**; run that file with the same editor
-Run button. Constraint violations/infeasibility stop a backtest, rather than
+Constraint violations/infeasibility stop a backtest, rather than
 silently relaxing rules. Each output records its exact step sources as metadata.
 
 ## Important limits
