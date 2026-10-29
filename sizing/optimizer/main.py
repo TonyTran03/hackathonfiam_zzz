@@ -9,6 +9,6 @@ MAX_MONTHS = None  # 2 for a quick execution check; None for all months.
 
 if __name__ == '__main__':
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from run import execute
+    from _engine import execute
     execute([Path(__file__).resolve().parent.name], forecast=FORECAST,
             start=START, end=END, max_months=MAX_MONTHS)
