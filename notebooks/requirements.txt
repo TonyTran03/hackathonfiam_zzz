@@ -1,6 +1,0 @@
-# From repository root: python -m pip install -r notebooks/requirements.txt
--r ../requirements.txt
-lightgbm>=4.0,<5
-ipykernel
-nbformat
-nbclient
