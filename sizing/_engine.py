@@ -5,6 +5,7 @@ No model training, production outputs, or notebook edits occur here.
 """
 from dataclasses import asdict, replace
 import importlib.util
+import inspect
 import hashlib
 import json
 from pathlib import Path
@@ -117,7 +118,7 @@ def load_inputs(prediction_path, forecast, panel_path, settings, stages=None):
     if not np.isfinite(pred.forecast).all():
         raise ValueError('Forecasts must be finite.')
     cols = ['permno', 'eom', 'prc', 'me', 'size_grp', 'gics', 'rvol_21d',
-            'ret', 'ret_exc', 'ticker', 'company_name'] + BETA_SOURCES
+            'dolvol_126d', 'ret', 'ret_exc', 'ticker', 'company_name'] + BETA_SOURCES
     panel = pd.read_parquet(panel_path, columns=cols)
     panel['eom'] = pd.to_datetime(panel.eom)
     panel['observed_month'] = panel.eom.dt.to_period('M').astype(str)
@@ -175,7 +176,7 @@ def covariance_for(history, month, g, settings):
                  'missing_history_fraction': float(x.isna().to_numpy().mean())}
 
 
-def sizing_inputs(g, previous, settings):
+def sizing_inputs(g, previous, settings, nav=1e9):
     previous_aligned = previous.reindex(g.index, fill_value=0).to_numpy()
     sectors = pd.get_dummies(g.sector, dtype=float).T
     return {
@@ -186,14 +187,22 @@ def sizing_inputs(g, previous, settings):
         'long_limits': np.where(g.side > 0, settings.position_limit, 0),
         'short_limits': np.where(g.side < 0, settings.position_limit, 0),
         'side': g.side.to_numpy(),
+        'pe_pct': g.pe_pct.to_numpy() if 'pe_pct' in g else None,
+        # Capacity: daily dollar volume and the fund's size at formation.
+        'dolvol': g.dolvol_126d.to_numpy() if 'dolvol_126d' in g else None,
+        'nav': nav,
     }
 
 
 def solve_weights(g, covariance, inputs, settings, constraint_builder=build_constraints,
                   objective_builder=build_objective):
     w = cp.Variable(len(g))
-    objective = objective_builder(w, g.score.to_numpy(), covariance, inputs['previous'],
-                                  inputs['forced_exit_turnover'], settings)
+    args = (w, g.score.to_numpy(), covariance, inputs['previous'],
+            inputs['forced_exit_turnover'], settings)
+    # An objective that declares a 7th parameter also receives `inputs`, which
+    # carries the sector matrix. Older six-argument objectives are unaffected.
+    wants_inputs = len(inspect.signature(objective_builder).parameters) >= 7
+    objective = objective_builder(*args, inputs) if wants_inputs else objective_builder(*args)
     rules = constraint_builder(w, inputs, settings)
     problem = cp.Problem(objective, list(rules.values()))
     problem.solve(solver='CLARABEL', tol_gap_abs=1e-9, tol_feas=1e-9, tol_gap_rel=1e-9)
@@ -481,13 +490,14 @@ def run(experiment='optimizer', predictions=None, forecast='current_gbm_no8k',
         if not months or months != pd.period_range(months[0], months[-1], freq='M').astype(str).tolist():
             raise ValueError('Evaluation requires a nonempty, contiguous monthly forecast window.')
         previous = pd.Series(dtype=float)
+        nav = 1e9  # mandate size at inception; compounds with realised net return
         market = benchmark_returns()
         for month, g in schedule:
             if month not in cash.index or not np.isfinite(cash.loc[month]):
                 raise ValueError(f'{month}: missing source cash return.')
             covariance, audit = covariance_for(history, month, g, settings)
             cov_audit.append({'target_month': month, **audit})
-            inputs = sizing_inputs(g, previous, settings)
+            inputs = sizing_inputs(g, previous, settings, nav)
             if hasattr(module, 'size_positions'):
                 optimized = module.size_positions(g, settings)
                 if not optimized.index.equals(g.index) or not np.isfinite(optimized).all():
@@ -507,6 +517,7 @@ def run(experiment='optimizer', predictions=None, forecast='current_gbm_no8k',
             realized = history.loc[month] if month in history.index else pd.Series(dtype=float)
             row, previous, raw, sectors = account(
                 month, g, optimized, previous, realized, float(cash.loc[month]), covariance, settings)
+            nav *= 1 + row['total_net']
             row.update(method=experiment, market_return=float(market.get(month, np.nan)),
                        position_count_in_200_500=bool(200 <= row['positions'] <= 500))
             rows.append(row)
