@@ -20,7 +20,7 @@ class Settings:
     # Allocation choice to keep selected names economically nonzero ($1m at inception).
     # This is not a PDF-specified minimum position size. All 300 candidates are held.
     minimum_position_weight: float = 0.001
-    beta_limit: float | None = None
+    beta_limit: float | None = 0.0  # Match estimated long and short market-beta exposure.
     sector_limit: float | None = None
     size_limit: float | None = None
     turnover_limit: float | None = None

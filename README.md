@@ -77,8 +77,9 @@ silently relaxing rules. Each output records its exact step sources as metadata.
 These are research backtests, not a final mandate certification. The price-only
 reference keeps adjusted ranking, only the $5 price filter, and equal weights.
 The optimizer enforces gross/net/position limits and holds 300 names with a
-0.1% minimum allocation per selected name (a research choice). Optional beta,
-sector, size and turnover bounds are editable.
+0.1% minimum allocation per selected name (a research choice). Estimated market
+beta matching is enabled by default (`beta_limit = 0.0`). Sector, size and
+turnover bounds remain optional. Estimated matching does not guarantee zero realized beta.
 Formation-day short eligibility, delayed execution, daily reporting and capacity
 analysis remain incomplete. The daily dsf_mini_from_2014.csv has not been located
 and is not included. Missing realized returns are marked at zero and reported;

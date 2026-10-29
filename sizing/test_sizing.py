@@ -97,15 +97,20 @@ class SizingTests(unittest.TestCase):
         self.assertEqual(result.loc['old_sizing', 'max_shorts_below_500m'], 7)
         self.assertTrue(pd.isna(result.loc['optimizer', 'max_shorts_below_500m']))
 
-    def test_undecided_bounds_are_disabled_and_size_can_be_enabled(self):
+    def test_beta_matching_defaults_on_and_optional_bounds_can_be_changed(self):
         g = fixture()
         inputs = sizing_inputs(g, pd.Series(dtype=float), SETTINGS)
         rules = build_constraints(cp.Variable(4), inputs, SETTINGS)
-        for name in ('market_beta', 'sector', 'size', 'turnover'):
+        self.assertEqual(SETTINGS.beta_limit, 0.)
+        self.assertIn('market_beta', rules)
+        for name in ('sector', 'size', 'turnover'):
             self.assertNotIn(name, rules)
+        disabled = build_constraints(cp.Variable(4), inputs, replace(SETTINGS, beta_limit=None))
+        self.assertNotIn('market_beta', disabled)
         settings = replace(SETTINGS, size_limit=0.)
         weights, _, _ = solve_weights(g, np.eye(4) * .01, inputs, settings)
         self.assertLessEqual(abs(weights @ g['size']), 1e-6)
+        self.assertLessEqual(abs(weights @ g.beta_use), 1e-6)
 
     def test_exact_beta_sector_and_turnover_with_forced_exit(self):
         g = fixture()
