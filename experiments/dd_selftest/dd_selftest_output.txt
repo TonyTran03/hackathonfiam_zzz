@@ -1,0 +1,552 @@
+C:\Users\b0079\Desktop\hackathonfiam_zzz\experiments\dd_selftest\dd_selftest.py:234: SettingWithCopyWarning: 
+A value is trying to be set on a copy of a slice from a DataFrame.
+Try using .loc[row_indexer,col_indexer] = value instead
+
+See the caveats in the documentation: https://pandas.pydata.org/pandas-docs/stable/user_guide/indexing.html#returning-a-view-versus-a-copy
+  present["has"] = present.set_index(["permno", "year"]).index.isin(fy.set_index(["permno", "year"]).index)
+panel 529,082 rows; filings 373,139 rows; 147 characteristics
+
+======== PANEL checks: full panel (529,082 rows, 6,561 permnos)
+
+### R1 timing: months flagged
+none
+
+### R1 match shares, median month / worst month
+          median       min
+ret_ok  0.996097  0.973915
+me_ok   1.000000  1.000000
+
+### R1 availability columns
+none
+
+### R2
+{'vintage_cols': [], 'dup_permno_eom': 0, 'dup_gvkey_iid_eom': 0}
+
+### R3
+{'flag': False, 'dup': 0, 'ticker_month_multi': 0, 'permno_key_change': 299, 'switch_back': 0, 'tickers_reused': 219}
+
+### R3 ticker-month with >1 permno (first 5)
+Series([], )
+
+### R3 gvkey-iid changes (first 3)
+        permno        eom ticker   gvkey iid
+155790   11644 2018-08-31    CRK  034010  01
+198529   11992 2019-08-31    TCF  015363  01
+299322   12350 2021-11-30   MULN  040116  01
+
+### R4 median me ratio (rows >50% missing / others), median of monthly ratios
+0.244 over 140 months; 20,027 of 529,082 rows >50% missing
+
+### R4 by missing band
+             rows  median_me_musd  share_micro_nano
+miss_band                                          
+<=10%      335676      1254.55511          0.391237
+10-25%     140162       342.87503          0.606541
+25-50%      33217       260.98850          0.682151
+>50%        20027       197.90210          0.877815
+
+### R4 example
+        permno        eom ticker     company_name          me  miss_share
+528397   83272 2026-08-31   HUBG  Hub Group, Inc.  2399.53419    0.666667
+
+### R5 firms per year by group
+group  left 2025-26  left early  listed   all
+eom                                          
+2015            198        1788    1952  3938
+2016            207        1599    2031  3837
+2017            226        1406    2139  3771
+2018            245        1238    2272  3755
+2019            261        1095    2400  3756
+2020            284         985    2597  3866
+2021            357        1172    2968  4497
+2022            393        1052    3104  4549
+2023            405         744    3211  4360
+2024            413         355    3343  4111
+2025            416           0    3497  3913
+2026            116           0    3497  3613
+
+### R5 literal (firms vs 2024)
+eom
+2021    1.093894
+2022    1.106543
+2023    1.060569
+2024    1.000000
+2025    0.951837
+2026    0.878862
+
+### R5 survivorship: share of firms whose last month < window end
+0.4670 of 6,561 firms -> flag=False
+
+### R6 start
+{'start': Timestamp('2015-01-31 00:00:00'), 'pass': True, 'level': np.float64(3883.5833333333335), 'first': eom
+2015-01-31    3729
+2015-02-28    3728
+2015-03-31    3719
+dtype: int64}
+
+======== 8-K checks (373,139 filings, 3,687 permnos)
+
+### R1 sec_accepted_at_utc non-null
+0
+
+### R1 filing_time_precision
+filing_time_precision
+date_or_midnight_placeholder    373139
+
+### R1 filing_date - content_report_date (days)
+report date missing                 950.0
+negative (filed before event)        62.0
+0                                212899.0
+1-4                              114582.0
+>4                                44646.0
+median                                0.0
+
+### R1 example (IBM)
+      permno ticker filing_date content_report_date sec_accepted_at_utc         filing_time_precision
+6403   12490    IBM  2015-01-07          2015-01-01                 NaT  date_or_midnight_placeholder
+
+### R2 vintage-like columns
+['cusip_asof_date']
+
+### R2 duplicates
+{'document_id': 0, 'permno+filing_date+text_sha256': 0, 'amendments (8-K/A)': 85}
+
+### R3 ticker vs panel
+{'both tickers present': 370121, 'ticker differs from panel': 167, 'share differs': np.float64(0.0005), 'ticker owned by another permno that month': 0, 'cik missing': 0}
+
+### R3 conflict examples
+Empty DataFrame
+Columns: [permno, filing_date, ticker, panel_ticker, owner, company_name]
+Index: []
+
+### R4 / known answer (a): coverage by group
+              firms  pct_8k_last12  pct_8k_ever
+group                                          
+left 2025-26    416       0.894231     0.906250
+left early     2648       0.018127     0.018882
+listed         3497       0.925365     0.932228
+
+### R4 % with 8-K in last 12 months, by size at last month
+group      left 2025-26  left early    listed
+size_last                                    
+large          0.920000    0.003215  0.973554
+mega           1.000000    0.012500  0.980663
+micro          0.861111    0.011905  0.900249
+nano           0.854839    0.035912  0.856046
+small          0.978495    0.015238  0.946650
+
+### R4 n by size
+group      left 2025-26  left early  listed
+size_last                                  
+large                50         311     605
+mega                  5          80     362
+micro               144        1008    1203
+nano                124         724     521
+small                93         525     806
+
+### R4 example: largest left-early firm with no 8-K ever
+        permno        eom           me last_known_ticker              last_known_name
+155575   92618 2018-07-31  171458.9181               DPS  DR PEPPER SNAPPLE GROUP INC
+
+### R5 % of panel firms with >=1 8-K that year, by group
+      left 2025-26  left early    listed       all  filings
+year                                                       
+2015      0.909091    0.014541  0.912910  0.504825    23426
+2016      0.908213    0.015009  0.918759  0.541569    24039
+2017      0.907080    0.016358  0.920524  0.582604    25362
+2018      0.910204    0.015347  0.924736  0.623968    26944
+2019      0.900383    0.020091  0.925000  0.659478    28167
+2020      0.911972    0.023350  0.928379  0.696586    32973
+2021      0.913165    0.023891  0.933625  0.694908    35124
+2022      0.885496    0.032319  0.933956  0.721257    35946
+2023      0.903704    0.041667  0.936157  0.780505    38181
+2024      0.903148    0.078873  0.931200  0.854780    39411
+2025      0.846154         NaN  0.929082  0.920266    39608
+2026      0.068966         NaN  0.863311  0.837808    23958
+
+### R5 literal rule (2026 is Jan-Aug)
+      filings_vs_2024  covered_share_vs_2024
+2021         0.891223               0.812967
+2022         0.912080               0.843793
+2023         0.968790               0.913106
+2024         1.000000               1.000000
+2025         1.004999               1.076611
+2026         0.607901               0.980145
+
+### R6 start
+{'start': Timestamp('2015-01-31 00:00:00'), 'pass': True, 'level': np.float64(3284.25), 'first': eom
+2015-01-31    1715
+2015-02-28    2138
+2015-03-31    1938
+dtype: int64}
+
+======== PLANTED-ERROR TEST, slice 2019-01-31 to 2020-12-31
+error 3 ticker ARNC: earlier holder permno 24643, later holder permno 19283
+            first       last  months          name
+permno                                            
+19283  2020-04-30 2020-12-31       9  ARCONIC CORP
+24643  2019-01-31 2020-03-31      15   ARCONIC INC
+
+======== PANEL checks: clean (85,584 rows, 4,090 permnos)
+
+### R1 timing: months flagged
+none
+
+### R1 match shares, median month / worst month
+          median       min
+ret_ok  0.995224  0.984547
+me_ok   1.000000  1.000000
+
+### R1 availability columns
+none
+
+### R2
+{'vintage_cols': [], 'dup_permno_eom': 0, 'dup_gvkey_iid_eom': 0}
+
+### R3
+{'flag': False, 'dup': 0, 'ticker_month_multi': 0, 'permno_key_change': 93, 'switch_back': 0, 'tickers_reused': 13}
+
+### R3 ticker-month with >1 permno (first 5)
+Series([], )
+
+### R3 gvkey-iid changes (first 3)
+        permno        eom ticker   gvkey iid
+198529   11992 2019-08-31    TCF  015363  01
+223552   13111 2020-03-31   LUMO  036333  01
+227145   13455 2020-04-30   SONN  036356  01
+
+### R4 median me ratio (rows >50% missing / others), median of monthly ratios
+0.325 over 24 months; 1,868 of 85,584 rows >50% missing
+
+### R4 by missing band
+            rows  median_me_musd  share_micro_nano
+miss_band                                         
+<=10%      56706     1116.924350          0.383981
+10-25%     21267      328.913490          0.582922
+25-50%      5743      317.673125          0.639561
+>50%        1868      246.687500          0.781585
+
+### R4 example
+        permno        eom ticker         company_name        me  miss_share
+259042   92665 2020-12-31   OCUP  OCUPHIRE PHARMA INC  70.62418    0.666667
+
+### R5 firms per year by group
+group  left early  listed   all
+eom                            
+2019          400    3356  3756
+2020          176    3690  3866
+
+### R5 literal (firms vs 2024)
+n/a: no 2024 in window
+
+### R5 survivorship: share of firms whose last month < window end
+0.0978 of 4,090 firms -> flag=False
+
+### R6 start
+{'start': None, 'pass': None}
+
+======== PANEL checks: error 1 look-ahead (85,584 rows, 4,090 permnos)
+
+### R1 timing: months flagged
+             ret_ok     me_ok
+eom                          
+2019-12-31  0.00872  0.011252
+
+### R1 match shares, median month / worst month
+          median       min
+ret_ok  0.994255  0.008720
+me_ok   1.000000  0.011252
+
+### R1 availability columns
+none
+
+### R2
+{'vintage_cols': [], 'dup_permno_eom': 0, 'dup_gvkey_iid_eom': 0}
+
+### R3
+{'flag': False, 'dup': 0, 'ticker_month_multi': 0, 'permno_key_change': 93, 'switch_back': 0, 'tickers_reused': 13}
+
+### R3 ticker-month with >1 permno (first 5)
+Series([], )
+
+### R3 gvkey-iid changes (first 3)
+        permno        eom ticker   gvkey iid
+198529   11992 2019-08-31    TCF  015363  01
+223552   13111 2020-03-31   LUMO  036333  01
+227145   13455 2020-04-30   SONN  036356  01
+
+### R4 median me ratio (rows >50% missing / others), median of monthly ratios
+0.325 over 24 months; 1,868 of 85,584 rows >50% missing
+
+### R4 by missing band
+            rows  median_me_musd  share_micro_nano
+miss_band                                         
+<=10%      56706     1116.924350          0.383981
+10-25%     21267      328.913490          0.582922
+25-50%      5743      317.673125          0.639561
+>50%        1868      246.687500          0.781585
+
+### R4 example
+        permno        eom ticker         company_name        me  miss_share
+259042   92665 2020-12-31   OCUP  OCUPHIRE PHARMA INC  70.62418    0.666667
+
+### R5 firms per year by group
+group  left early  listed   all
+eom                            
+2019          400    3356  3756
+2020          176    3690  3866
+
+### R5 literal (firms vs 2024)
+n/a: no 2024 in window
+
+### R5 survivorship: share of firms whose last month < window end
+0.0978 of 4,090 firms -> flag=False
+
+### R6 start
+{'start': None, 'pass': None}
+
+======== PANEL checks: error 2 survivorship (80,964 rows, 3,690 permnos)
+
+### R1 timing: months flagged
+none
+
+### R1 match shares, median month / worst month
+          median      min
+ret_ok  0.994877  0.98444
+me_ok   1.000000  1.00000
+
+### R1 availability columns
+none
+
+### R2
+{'vintage_cols': [], 'dup_permno_eom': 0, 'dup_gvkey_iid_eom': 0}
+
+### R3
+{'flag': False, 'dup': 0, 'ticker_month_multi': 0, 'permno_key_change': 90, 'switch_back': 0, 'tickers_reused': 3}
+
+### R3 ticker-month with >1 permno (first 5)
+Series([], )
+
+### R3 gvkey-iid changes (first 3)
+        permno        eom ticker   gvkey iid
+198529   11992 2019-08-31    TCF  015363  01
+223552   13111 2020-03-31   LUMO  036333  01
+227145   13455 2020-04-30   SONN  036356  01
+
+### R4 median me ratio (rows >50% missing / others), median of monthly ratios
+0.303 over 24 months; 1,729 of 80,964 rows >50% missing
+
+### R4 by missing band
+            rows  median_me_musd  share_micro_nano
+miss_band                                         
+<=10%      53813     1203.788190          0.371639
+10-25%     19972      342.828425          0.576307
+25-50%      5450      321.392335          0.630826
+>50%        1729      251.250000          0.776171
+
+### R4 example
+        permno        eom ticker         company_name        me  miss_share
+259042   92665 2020-12-31   OCUP  OCUPHIRE PHARMA INC  70.62418    0.666667
+
+### R5 firms per year by group
+group  listed   all
+eom                
+2019     3356  3356
+2020     3690  3690
+
+### R5 literal (firms vs 2024)
+n/a: no 2024 in window
+
+### R5 survivorship: share of firms whose last month < window end
+0.0000 of 3,690 firms -> flag=True
+
+### R6 start
+{'start': None, 'pass': None}
+
+======== PANEL checks: error 3 wrong ticker map (85,584 rows, 4,089 permnos)
+
+### R1 timing: months flagged
+none
+
+### R1 match shares, median month / worst month
+          median       min
+ret_ok  0.995224  0.984547
+me_ok   1.000000  1.000000
+
+### R1 availability columns
+none
+
+### R2
+{'vintage_cols': [], 'dup_permno_eom': 9, 'dup_gvkey_iid_eom': 0}
+
+### R3
+{'flag': True, 'dup': 9, 'ticker_month_multi': 0, 'permno_key_change': 94, 'switch_back': 1, 'tickers_reused': 12}
+
+### R3 ticker-month with >1 permno (first 5)
+Series([], )
+
+### R3 gvkey-iid changes (first 3)
+        permno        eom ticker   gvkey iid
+198529   11992 2019-08-31    TCF  015363  01
+223552   13111 2020-03-31   LUMO  036333  01
+227145   13455 2020-04-30   SONN  036356  01
+
+### R4 median me ratio (rows >50% missing / others), median of monthly ratios
+0.325 over 24 months; 1,868 of 85,584 rows >50% missing
+
+### R4 by missing band
+            rows  median_me_musd  share_micro_nano
+miss_band                                         
+<=10%      56706     1116.924350          0.383981
+10-25%     21267      328.913490          0.582922
+25-50%      5743      317.673125          0.639561
+>50%        1868      246.687500          0.781585
+
+### R4 example
+        permno        eom ticker         company_name        me  miss_share
+259042   92665 2020-12-31   OCUP  OCUPHIRE PHARMA INC  70.62418    0.666667
+
+### R5 firms per year by group
+group  left early  listed   all
+eom                            
+2019          400    3356  3756
+2020          176    3689  3865
+
+### R5 literal (firms vs 2024)
+n/a: no 2024 in window
+
+### R5 survivorship: share of firms whose last month < window end
+0.0978 of 4,089 firms -> flag=False
+
+### R6 start
+{'start': None, 'pass': None}
+
+======== PANEL checks: all three (80,964 rows, 3,689 permnos)
+
+### R1 timing: months flagged
+              ret_ok     me_ok
+eom                           
+2019-12-31  0.001193  0.003281
+
+### R1 match shares, median month / worst month
+          median       min
+ret_ok  0.994069  0.001193
+me_ok   1.000000  0.003281
+
+### R1 availability columns
+none
+
+### R2
+{'vintage_cols': [], 'dup_permno_eom': 9, 'dup_gvkey_iid_eom': 0}
+
+### R3
+{'flag': True, 'dup': 9, 'ticker_month_multi': 0, 'permno_key_change': 91, 'switch_back': 1, 'tickers_reused': 2}
+
+### R3 ticker-month with >1 permno (first 5)
+Series([], )
+
+### R3 gvkey-iid changes (first 3)
+        permno        eom ticker   gvkey iid
+198529   11992 2019-08-31    TCF  015363  01
+223552   13111 2020-03-31   LUMO  036333  01
+227145   13455 2020-04-30   SONN  036356  01
+
+### R4 median me ratio (rows >50% missing / others), median of monthly ratios
+0.303 over 24 months; 1,729 of 80,964 rows >50% missing
+
+### R4 by missing band
+            rows  median_me_musd  share_micro_nano
+miss_band                                         
+<=10%      53813     1203.788190          0.371639
+10-25%     19972      342.828425          0.576307
+25-50%      5450      321.392335          0.630826
+>50%        1729      251.250000          0.776171
+
+### R4 example
+        permno        eom ticker         company_name        me  miss_share
+259042   92665 2020-12-31   OCUP  OCUPHIRE PHARMA INC  70.62418    0.666667
+
+### R5 firms per year by group
+group  listed   all
+eom                
+2019     3356  3356
+2020     3689  3689
+
+### R5 literal (firms vs 2024)
+n/a: no 2024 in window
+
+### R5 survivorship: share of firms whose last month < window end
+0.0000 of 3,689 firms -> flag=True
+
+### R6 start
+{'start': None, 'pass': None}
+
+======== PANEL checks: extra: error 1 without ret_1_0/market_equity (85,584 rows, 4,090 permnos)
+
+### R1 timing: months flagged
+none
+
+### R1 match shares, median month / worst month
+          median       min
+ret_ok  0.995224  0.984547
+me_ok   1.000000  1.000000
+
+### R1 availability columns
+none
+
+### R2
+{'vintage_cols': [], 'dup_permno_eom': 0, 'dup_gvkey_iid_eom': 0}
+
+### R3
+{'flag': False, 'dup': 0, 'ticker_month_multi': 0, 'permno_key_change': 93, 'switch_back': 0, 'tickers_reused': 13}
+
+### R3 ticker-month with >1 permno (first 5)
+Series([], )
+
+### R3 gvkey-iid changes (first 3)
+        permno        eom ticker   gvkey iid
+198529   11992 2019-08-31    TCF  015363  01
+223552   13111 2020-03-31   LUMO  036333  01
+227145   13455 2020-04-30   SONN  036356  01
+
+### R4 median me ratio (rows >50% missing / others), median of monthly ratios
+0.325 over 24 months; 1,868 of 85,584 rows >50% missing
+
+### R4 by missing band
+            rows  median_me_musd  share_micro_nano
+miss_band                                         
+<=10%      56706     1116.924350          0.383981
+10-25%     21267      328.913490          0.582922
+25-50%      5743      317.673125          0.639561
+>50%        1868      246.687500          0.781585
+
+### R4 example
+        permno        eom ticker         company_name        me  miss_share
+259042   92665 2020-12-31   OCUP  OCUPHIRE PHARMA INC  70.62418    0.666667
+
+### R5 firms per year by group
+group  left early  listed   all
+eom                            
+2019          400    3356  3756
+2020          176    3690  3866
+
+### R5 literal (firms vs 2024)
+n/a: no 2024 in window
+
+### R5 survivorship: share of firms whose last month < window end
+0.0978 of 4,090 firms -> flag=False
+
+### R6 start
+{'start': None, 'pass': None}
+
+### PLANTED SUMMARY
+                           clean error 1 look-ahead error 2 survivorship error 3 wrong ticker map all three extra: error 1 without ret_1_0/market_equity
+R1 timing flag             False               True                False                    False      True                                        False
+R1 flagged months                           2019-12                                                 2019-12                                             
+R3 flag                    False              False                False                     True      True                                        False
+R3 dup keys                    0                  0                    0                        9         9                                            0
+R3 permnos w/ key change      93                 93                   90                       94        91                                           93
+R3 switch-back                 0                  0                    0                        1         1                                            0
+R4 me ratio                0.325              0.325                0.303                    0.325     0.303                                        0.325
+R5 survivorship flag       False              False                 True                    False      True                                        False
+R5 exit share             0.0978             0.0978                  0.0                   0.0978       0.0                                       0.0978
