@@ -1,3 +1,43 @@
+# Market-Neutral Alpha
+
+**5th Place — 2026 McGill–FIAM Asset Management Hackathon**
+
+A systematic long-short US equity strategy combining machine learning, factor-adjusted stock rankings, and convex portfolio optimization.
+
+## 1. Prediction Model
+
+We use **LightGBM** trained on 147 firm characteristics to forecast next-month stock returns.
+
+Key predictive features include:
+- Idiosyncratic volatility
+- Investment growth
+- Operating profitability
+
+Models are trained using historical data to avoid look-ahead bias.
+
+## 2. Ranking
+
+Raw forecasts are adjusted for systematic exposures:
+
+- Market beta
+- Market capitalization (size)
+- Sector
+
+The resulting selection scores are smoothed over three observations to improve ranking stability and reduce unnecessary turnover.
+
+## 3. Candidate Selection
+
+Eligibility requirements:
+- Share price ≥ $5
+- Exclude nano-cap and micro-cap stocks
+- Market capitalization ≥ $500M for short candidates
+
+**Portfolio: 100 longs and 100 shorts**
+
+- **Long:** Top 100 stocks by adjusted selection score.
+- **Short:** Select 100 stocks from approximately the bottom 1,000–2,000 ranks, accounting for sector balance.
+
+The broader short-selection pool allows greater flexibility in controlling sector exposure.
 
 ## 4. Portfolio Optimization
 
