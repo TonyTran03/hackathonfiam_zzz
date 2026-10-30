@@ -1,0 +1,113 @@
+"""STEP 4: edit allocation limits and the CVXPY constraints, then run main.py in this folder.
+
+Weights and exposure limits are fractions of NAV (0.015 means 1.5%).
+None disables an optional house constraint; 0.0 requests exact neutrality.
+The fixed mandate ceilings below are kept separate from research choices.
+"""
+from dataclasses import dataclass
+
+import cvxpy as cp
+import numpy as np
+
+
+@dataclass(frozen=True)
+class Settings:
+    # House limits. Mandatory gross/net/5% ceilings are enforced separately.
+    gross_limit: float = 0.75
+    net_min: float = -0.50
+    net_max: float = 0.50
+    position_limit: float = 0.02
+    # Every candidate gets at least 5bp so the book keeps all 450 names (mandate: 200-500);
+    # the optimizer sizes everything above that floor. A dust floor let it collapse to ~50 names.
+    minimum_position_weight: float = 0.0005
+    # Mentor's whiteboard: top names w > 0 (with the floor above), wide short pool only w <= 0.
+    # None = shorts use the same floor; 0.0 = the optimizer may leave any short candidate at zero.
+    short_minimum_weight: float | None = None
+    beta_limit: float | None = 0.0  # Match estimated long and short market-beta exposure.
+    # Mentor review: sector and size neutrality enforced in the weights, not just selection.
+    sector_limit: float | None = 0.02  # |net weight| per GICS sector, fraction of NAV
+    size_limit: float | None = 0.02    # |w . size|, size = standardized rank of market cap
+    turnover_limit: float | None = None
+    annual_vol_limit: float | None = None  # Monthly covariance, annualized with sqrt(12).
+
+    # Starting values, NOT validated parameters. Scores are not return forecasts.
+    # Score reward and penalties are in score units; tune on a design period.
+    risk_penalty: float = 100.0
+    cost_penalty: float = 1.0
+    trading_cost_bps: float = 20.0  # one-way charge on all buys + sells
+    covariance_months: int = 36
+    covariance_min_observations: int = 12
+    numerical_tolerance: float = 1e-6
+
+
+SETTINGS = Settings()
+
+
+def build_objective(w, scores, covariance, previous, forced_exit_turnover, settings):
+    """Edit the sizing trade-off here: signal reward minus risk and trading costs."""
+    trades = cp.norm1(w - previous) + forced_exit_turnover
+    return cp.Maximize(
+        scores @ w
+        - settings.risk_penalty * cp.quad_form(w, cp.psd_wrap(covariance))
+        - settings.cost_penalty * settings.trading_cost_bps / 10000 * trades)
+
+
+def build_constraints(w, inputs, settings=SETTINGS):
+    """Add new CVXPY expressions here.
+
+    inputs fields (all aligned with w): beta, size, sector_matrix, previous,
+    long_limits, short_limits, forced_exit_turnover. Sector matrix has one
+    row per sector. Previous holdings outside the current universe MUST be
+    liquidated; their turnover counts even though their new weight is zero.
+
+    Example of another exposure:
+        rules['value'] = cp.abs(inputs['value_beta'] @ w) <= value_limit
+    Supply that exposure in sizing/_engine.py before enabling the expression.
+    """
+    rules = {
+        'mandate_gross': cp.norm1(w) <= 2.0,
+        'mandate_net_min': cp.sum(w) >= -0.50,
+        'mandate_net_max': cp.sum(w) <= 0.50,
+        'mandate_position': cp.abs(w) <= 0.05,
+        'long_limits': w <= inputs['long_limits'],
+        'short_limits': w >= -inputs['short_limits'],
+        'house_gross': cp.norm1(w) <= settings.gross_limit,
+        'house_net_min': cp.sum(w) >= settings.net_min,
+        'house_net_max': cp.sum(w) <= settings.net_max,
+        'selected_name_minimum': cp.multiply(inputs['side'], w) >= np.where(
+            (inputs['side'] < 0) & (settings.short_minimum_weight is not None),
+            settings.short_minimum_weight or 0.0, settings.minimum_position_weight),
+    }
+    if settings.beta_limit is not None:
+        rules['market_beta'] = cp.abs(inputs['beta'] @ w) <= settings.beta_limit
+    if settings.sector_limit is not None:
+        rules['sector'] = cp.abs(inputs['sector_matrix'] @ w) <= settings.sector_limit
+    if settings.size_limit is not None:
+        rules['size'] = cp.abs(inputs['size'] @ w) <= settings.size_limit
+    if settings.turnover_limit is not None:
+        rules['turnover'] = (
+            cp.norm1(w - inputs['previous']) + inputs['forced_exit_turnover']
+            <= settings.turnover_limit
+        )
+    if settings.annual_vol_limit is not None:
+        rules['portfolio_variance'] = cp.quad_form(
+            w, cp.psd_wrap(inputs['covariance'])) <= settings.annual_vol_limit ** 2 / 12
+    return rules
+
+
+def validate(settings):
+    if not 0 < settings.gross_limit <= 2:
+        raise ValueError('gross_limit must be in (0, 2].')
+    if not -0.5 <= settings.net_min <= settings.net_max <= 0.5:
+        raise ValueError('Net limits must stay inside [-0.5, 0.5].')
+    if not 0 < settings.position_limit <= 0.05:
+        raise ValueError('position_limit must be in (0, 0.05].')
+    if not 1e-6 < settings.minimum_position_weight <= settings.position_limit:
+        raise ValueError('Selected names require a positive allocation above numerical dust.')
+    for key in ('beta_limit', 'sector_limit', 'size_limit', 'turnover_limit',
+                'risk_penalty', 'cost_penalty', 'trading_cost_bps', 'annual_vol_limit'):
+        val = getattr(settings, key)
+        if val is not None and (not np.isfinite(val) or val < 0):
+            raise ValueError(f'{key} must be finite and nonnegative, or None for optional bounds.')
+    if not 2 <= settings.covariance_min_observations <= settings.covariance_months:
+        raise ValueError('Covariance history requires 2 <= minimum observations <= window.')

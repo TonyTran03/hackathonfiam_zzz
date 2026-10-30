@@ -1,0 +1,251 @@
+diff --git a/06_final/PROTOCOL_FINAL.md b/06_final/PROTOCOL_FINAL.md
+index 111f6d5..b22e71a 100644
+--- a/06_final/PROTOCOL_FINAL.md
++++ b/06_final/PROTOCOL_FINAL.md
+@@ -182,3 +182,27 @@ are; Amendment 5's are reported whatever they show. This is the last
+ construction change before the presentation; the headline is unchanged.
+ 
+ - Amendment 4's run folders are kept as `*_a4` so they are not overwritten.
++
++## Amendment 7 -- risk-weighted sector neutrality, MENTOR-PROMPTED and POST-HOC (2026-10-28)
++
++The mentor review showed that dollar-neutral is not sector-neutral: Amendment
++5's book holds equal long and short DOLLARS in every GICS sector, but when a
++sector's longs move more with the sector than its shorts (or less), the sector
++still carries net exposure. This amendment changes one thing, the sector step
++of `group_balance`: each sector is balanced on dollars times each name's beta
++to its own sector, sum(long $ x beta) = sum(short $ x beta), still by scaling
++the heavier side down. Sector beta is a Dimson beta (lag 0 + lag 1) on the 252
++trailing trading days up to the day before formation (no look-ahead), against
++the equal-weighted daily return of that sector's candidates, clipped to
++[0.3, 3.0], and set to 1.0 for a name with fewer than 126 usable days. The
++251 trading days before each window are loaded for this estimate only, so the
++first formations of a window get real betas. The industry cap, name caps and
++gross stay in plain dollars, as in Amendment 5. Chosen after mentor review
++(Oct 28) and BEFORE any run with it. This overrides Amendment 5's statement
++that it was the last construction change before the presentation.
++
++- `--sector-neutral --sector-beta` (label suffix `_sbeta`); formation logs add
++  `max_abs_sector_net_risk`, the largest |sector net| in beta-weighted dollars.
++- Reported next to Amendment 5, with and without the futures hedge (`f11`),
++  whatever it shows. The headline (`test_M`) is unchanged.
++- Amendment 6 is reserved for the turnover rows.
+diff --git a/06_final/f03_engine.py b/06_final/f03_engine.py
+index 2412dcf..cb3bc56 100644
+--- a/06_final/f03_engine.py
++++ b/06_final/f03_engine.py
+@@ -55,6 +55,9 @@ GROSS_RESET = 1.95
+ NET_TRIGGER = 0.48
+ MIN_NAMES_TRIGGER = 210      # refill legs before the 200 floor is reached
+ DISTRESS_ITEMS = {"4.01", "4.02", "1.03", "3.01"}
++SECTOR_BETA_DAYS = 252       # Amendment 7: trailing window for beta to own sector
++SECTOR_BETA_MIN_DAYS = 126   # fewer usable days -> weight 1.0
++SECTOR_BETA_CLIP = (0.3, 3.0)
+ 
+ 
+ # ---------------------------------------------------------------- inputs
+@@ -82,6 +85,21 @@ def load_inputs(window):
+     return days, sig, perms, R.values, P.values, last.values
+ 
+ 
++def load_return_hist(days, perms, n_before):
++    """Amendment 7 only: daily returns for the n_before trading days before
++    the window plus the window itself, same columns as load_inputs' R. Kept
++    apart from R so no other part of the engine sees the extra history.
++    Returns the matrix and the row of the window's first day."""
++    cal = pd.read_parquet(F.DATA / "calendar.parquet")
++    lo, hi = days["date"].iloc[0], days["date"].iloc[-1]
++    before = list(cal.loc[cal["date"] < lo, "date"].sort_values().iloc[-n_before:])
++    dsf = pd.read_parquet(F.DSF_PARQUET)
++    dsf = dsf[dsf["permno"].isin(perms) & (dsf["date"] >= before[0]) & (dsf["date"] <= hi)]
++    R = (dsf.pivot(index="date", columns="permno", values="daily_return")
++            .reindex(index=before + list(days["date"]), columns=perms))
++    return R.values, len(before)
++
++
+ def load_events(perms):
+     """Distress 8-Ks per (permno, filing_date). Used ONLY by the E overlay and
+     the risk layer, both of which may act no earlier than the next close."""
+@@ -129,20 +147,27 @@ def leg_weights(vol, caps, notional):
+ class Engine:
+     def __init__(self, window, freq="M", overlay=None, layer=None, seed_legs=None, triage=None,
+                  label=None, cost_scale=1.0, start_nav=None, cost_mode="sqrt:0.7",
+-                 borrow_mode="model", sector_neutral=False, industry_cap=None):
++                 borrow_mode="model", sector_neutral=False, industry_cap=None, sector_beta=False):
+         self.window, self.freq, self.overlay, self.layer = window, freq, overlay, layer
+         self.triage = triage            # f04_risk_layer.TriageLayer, optional
+         self.sector_neutral = sector_neutral
+         self.industry_cap = industry_cap
+-        self.label = label or "%s_%s%s%s%s%s%s" % (window, freq, "_" + overlay if overlay else "",
+-                                                   "_" + layer.name if layer else "",
+-                                                   "_" + triage.name if triage else "",
+-                                                   "_secneu" if sector_neutral else "",
+-                                                   "_ind%g" % (100 * industry_cap) if industry_cap else "")
++        self.sector_beta = sector_beta  # Amendment 7: risk-weighted sector balance
++        self.label = label or "%s_%s%s%s%s%s%s%s" % (window, freq, "_" + overlay if overlay else "",
++                                                     "_" + layer.name if layer else "",
++                                                     "_" + triage.name if triage else "",
++                                                     "_secneu" if sector_neutral else "",
++                                                     "_sbeta" if sector_beta else "",
++                                                     "_ind%g" % (100 * industry_cap) if industry_cap else "")
+         self.cost_scale = cost_scale
+         self.start_nav = start_nav or FIN["start_nav"]
+         self.cost_mode, self.borrow_mode = cost_mode, borrow_mode
+         (self.days, sig, self.perms, self.R, self.P, self.last) = load_inputs(window)
++        if sector_beta:
++            # R_hist row hist_off + di is the day self.R calls row di + 1
++            self.R_hist, self.hist_off = load_return_hist(self.days, self.perms,
++                                                          SECTOR_BETA_DAYS - 1)
++            assert np.array_equal(self.R_hist[self.hist_off - 1:], self.R, equal_nan=True)
+         self.pidx = {p: i for i, p in enumerate(self.perms)}
+         self.sig_sel = {m: g.set_index("permno") for m, g in
+                         S.select_inputs(sig).groupby("target_month")}
+@@ -166,6 +191,36 @@ class Engine:
+         adv_cap = H["max_days_adv"] * H["max_participation"] * g["dolvol_126d"].values / nav
+         return np.minimum(np.minimum(H["house_max_weight"], FIN["max_single_weight"]), adv_cap)
+ 
++    def sector_betas(self, di, g, sec):
++        """Amendment 7: each candidate's Dimson beta (lag 0 + lag 1, as in
++        dimson_beta) to its own GICS sector, whose daily return is the
++        equal-weighted mean of that sector's candidates. Uses the trailing
++        SECTOR_BETA_DAYS rows of self.R_hist up to YESTERDAY (row
++        hist_off + di - 1; row hist_off + di is today), so nothing from the
++        formation day enters. Clipped to SECTOR_BETA_CLIP; 1.0 for a name with
++        fewer than SECTOR_BETA_MIN_DAYS usable days. Returns one weight per
++        perm (1.0 off the candidate list)."""
++        w = np.ones(len(self.perms))
++        today = self.hist_off + di
++        win = self.R_hist[max(0, today - SECTOR_BETA_DAYS):today]
++        pi = g["pi"].values
++        for s in np.unique(sec):
++            cols = pi[sec == s]
++            Y = win[:, cols]
++            ok = np.isfinite(Y)
++            n = ok.sum(axis=1)
++            with np.errstate(invalid="ignore"):            # a day with no returns -> nan
++                m = np.where(ok, Y, 0.0).sum(axis=1) / n
++            for j, c in enumerate(cols):
++                y = Y[:, j]
++                use = np.isfinite(y[1:]) & np.isfinite(m[1:]) & np.isfinite(m[:-1])
++                if use.sum() < SECTOR_BETA_MIN_DAYS:
++                    continue
++                X = np.column_stack([np.ones(use.sum()), m[1:][use], m[:-1][use]])
++                coef, *_ = np.linalg.lstsq(X, y[1:][use], rcond=None)
++                w[c] = np.clip(coef[1] + coef[2], *SECTOR_BETA_CLIP)
++        return w
++
+     def form(self, di, month, x, nav):
+         g = self.sig_sel.get(month)
+         if g is None:
+@@ -255,11 +310,21 @@ class Engine:
+                 capd = g.set_index("pi")["cap"].reindex(np.where(free)[0]).values * nav
+                 target[free] = np.clip(target[free] * (want - kept) / tf, -capd, capd)
+         target = np.where(keep, x, target)
+-        sector_net, max_ind, gross_now = {}, None, None
++        sector_net, max_ind, gross_now, max_sec_risk = {}, None, None, None
+         if self.sector_neutral:
++            weights = None
++            if self.sector_beta:
++                # same 2-digit GICS sector key as group_balance
++                sec = np.array([("%.0f" % float(v))[:2] if pd.notna(v) else "zz"
++                                for v in g["gics"].values], dtype=object)
++                weights = self.sector_betas(di, g, sec)
+             target, max_sec, max_ind, gross_now = group_balance(
+-                target, len(self.perms), g, nav, GROSS_TARGET, self.industry_cap)
++                target, len(self.perms), g, nav, GROSS_TARGET, self.industry_cap, weights=weights)
+             sector_net = {"max": max_sec}
++            if weights is not None:
++                tw = (target * weights)[g["pi"].values]
++                max_sec_risk = 100 * max([abs(tw[sec == k].sum()) for k in np.unique(sec)]
++                                         or [0.0]) / nav
+         info = {"est_beta_long": est_l, "est_beta_short": est_s,
+                 "used_beta_long": bl, "used_beta_short": bs,
+                 "measured": measured, "long_notional": lplaced, "short_notional": splaced,
+@@ -267,6 +332,7 @@ class Engine:
+                 "long_extended": len(lnames) - len(longs),
+                 "short_extended": len(snames) - len(shorts),
+                 "max_abs_sector_net": max(map(abs, sector_net.values())) if sector_net else None,
++                "max_abs_sector_net_risk": max_sec_risk,
+                 "max_abs_industry_net": max_ind, "formation_gross": gross_now}
+         self.month_target_w = target / nav
+         self.month_rows = g
+@@ -744,7 +810,12 @@ if __name__ == "__main__":
+                     help="POST-HOC: equal long/short dollars per GICS sector")
+     ap.add_argument("--industry-cap", type=float, default=None,
+                     help="POST-HOC: max |net| per GICS 6-digit industry, % of NAV")
++    ap.add_argument("--sector-beta", action="store_true",
++                    help="POST-HOC (Amendment 7): balance sectors on $ x beta to own sector; "
++                         "needs --sector-neutral")
+     a = ap.parse_args()
++    if a.sector_beta and not a.sector_neutral:
++        ap.error("--sector-beta only applies with --sector-neutral")
+     lay = None
+     if a.layer:
+         import f04_risk_layer as RL
+@@ -759,6 +830,8 @@ if __name__ == "__main__":
+                                                a.cost.replace(":", ""), a.borrow)
+     if label and a.sector_neutral:
+         label += "_secneu"
++    if label and a.sector_beta:
++        label += "_sbeta"
+     if label and a.industry_cap:
+         label += "_ind%g" % a.industry_cap
+     tri = None
+@@ -767,7 +840,7 @@ if __name__ == "__main__":
+         tri = RL.TriageLayer(a.triage)
+     e = Engine(a.window, a.freq, a.overlay, layer=lay, label=label, start_nav=a.nav,
+                cost_mode=a.cost, borrow_mode=a.borrow, triage=tri,
+-               sector_neutral=a.sector_neutral,
++               sector_neutral=a.sector_neutral, sector_beta=a.sector_beta,
+                industry_cap=a.industry_cap / 100 if a.industry_cap else None).run()
+     save(e)
+     if lay is not None:
+diff --git a/06_final/group_balance.py b/06_final/group_balance.py
+index 51a4594..83356d1 100644
+--- a/06_final/group_balance.py
++++ b/06_final/group_balance.py
+@@ -2,7 +2,8 @@ import numpy as np
+ import pandas as pd
+ 
+ 
+-def group_balance(target, perms_n, g, nav, gross_goal, industry_cap=None, iters=30, fill_rounds=25):
++def group_balance(target, perms_n, g, nav, gross_goal, industry_cap=None, iters=30, fill_rounds=25,
++                  weights=None):
+     """Sector-neutral (optionally industry-capped) book at formation.
+ 
+     Phase A, SHRINK (unchanged from v1): industry cap -> sector net 0 (heavier
+@@ -15,6 +16,13 @@ def group_balance(target, perms_n, g, nav, gross_goal, industry_cap=None, iters=
+     stops rising. Constraints hold after every round because Phase A ends it.
+     Returns new target ($), max |sector net| and max |industry net| (% of NAV),
+     and the gross reached (fraction of NAV).
++
++    weights (Amendment 7, optional; one per name, same length as target):
++    the SECTOR step compares long and short sides on t * weights instead of
++    t, so a sector is balanced when its long $ x weight equals its short $ x
++    weight. The heavier side is still scaled down uniformly. The industry cap,
++    name caps, gross and the returned nets stay in dollars. None leaves every
++    step exactly as before.
+     """
+     gics = np.full(perms_n, "", dtype=object)
+     gics[g["pi"].values] = [("%.0f" % float(v)) if pd.notna(v) else "" for v in g["gics"].values]
+@@ -24,8 +32,9 @@ def group_balance(target, perms_n, g, nav, gross_goal, industry_cap=None, iters=
+     caps[g["pi"].values] = g["cap"].values * nav
+     t = target.astype(float).copy()
+ 
+-    def shrink_heavy(mask, allowed):
+-        L, S = t[mask & (t > 0)].sum(), -t[mask & (t < 0)].sum()
++    def shrink_heavy(mask, allowed, w=None):
++        tw = t if w is None else t * w
++        L, S = tw[mask & (t > 0)].sum(), -tw[mask & (t < 0)].sum()
+         net = L - S
+         if abs(net) <= allowed + 1e-9:
+             return
+@@ -43,7 +52,7 @@ def group_balance(target, perms_n, g, nav, gross_goal, industry_cap=None, iters=
+             for k in np.unique(sec[t != 0]):
+                 m = sec == k
+                 if (t[m] > 0).any() and (t[m] < 0).any():
+-                    shrink_heavy(m, 0.0)
++                    shrink_heavy(m, 0.0, weights)
+                 else:
+                     t[m] = 0.0
+             t = np.clip(t, -caps, caps)

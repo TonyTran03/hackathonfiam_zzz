@@ -1,0 +1,20 @@
+,Foot traffic,Card spend,Web traffic
+data months,2019-01 to 2026-08,2019-01 to 2026-08,2020-06 to 2026-08
+mapped permnos,102,119,316
+mapped: still in panel Aug 2026,84,96,287
+mapped: left panel before 2025,12,13,14
+mapped: left panel 2025 to Jul 2026,6,10,15
+CA rows after permno's last panel month,392,455,506
+CA rows before permno's first panel month,406,637,1021
+CA rows on months with no panel row,809,1103,1540
+CA rows total,9198,10351,23127
+"comparison sectors (2-digit GICS, >=3 mapped names)",25 30,25 30,20 25 30 35 40 45 50 60
+"small+: listed Aug 2026, n",431,431,2164
+"small+: listed Aug 2026, % covered",19.5,22.3,13.2
+"small+: exited earlier, n",121,121,699
+"small+: exited earlier, % covered",14.9,19.0,3.9
+"large/mega: listed Aug 2026, n",268,268,1261
+"large/mega: listed Aug 2026, % covered",19.8,23.5,19.5
+"large/mega: exited earlier, n",35,35,261
+"large/mega: exited earlier, % covered",8.6,14.3,6.5
+mapped exits by year,"2020:1, 2023:5, 2024:6, 2025:4, 2026:2","2020:1, 2023:6, 2024:6, 2025:6, 2026:4","2020:2, 2022:1, 2023:8, 2024:3, 2025:9, 2026:6"
